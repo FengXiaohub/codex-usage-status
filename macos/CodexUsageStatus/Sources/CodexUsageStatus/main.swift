@@ -460,7 +460,7 @@ enum BadgeStyle: String, CaseIterable {
     var menuTitle: String {
         switch self {
         case .doubleRing:
-            return "Compact Gauge"
+            return "Double Ring"
         case .largeReadout:
             return "Large Readout"
         }
@@ -480,13 +480,13 @@ enum BadgeStyle: String, CaseIterable {
 }
 
 enum UsageBadgeRenderer {
-    private static let doubleRingImageSize = NSSize(width: 78, height: 24)
+    private static let doubleRingImageSize = NSSize(width: 86, height: 24)
     private static let largeReadoutImageSize = NSSize(width: 86, height: 24)
 
     static func statusItemLength(for style: BadgeStyle) -> CGFloat {
         switch style {
         case .doubleRing:
-            return 82
+            return 90
         case .largeReadout:
             return 90
         }
@@ -494,7 +494,7 @@ enum UsageBadgeRenderer {
 
     static func image(for usage: UsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
-            left: BadgeValue(label: "5h", percent: usage.fiveHour.remainingPercent),
+            left: BadgeValue(label: "5H", percent: usage.fiveHour.remainingPercent),
             right: BadgeValue(label: "W", percent: usage.weekly.remainingPercent),
             appearance: appearance
         )
@@ -502,7 +502,7 @@ enum UsageBadgeRenderer {
 
     static func placeholderImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
-            left: BadgeValue(label: "5h", percent: nil),
+            left: BadgeValue(label: "5H", percent: nil),
             right: BadgeValue(label: "W", percent: nil),
             appearance: appearance
         )
@@ -510,7 +510,7 @@ enum UsageBadgeRenderer {
 
     static func errorImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
-            left: BadgeValue(label: "5h", percent: nil, overrideText: "?"),
+            left: BadgeValue(label: "5H", percent: nil, overrideText: "?"),
             right: BadgeValue(label: "W", percent: nil, overrideText: "?"),
             appearance: appearance,
             forcedColor: .systemRed
@@ -549,12 +549,12 @@ enum UsageBadgeRenderer {
             rect.fill()
 
             let divider = NSBezierPath()
-            divider.appendArc(withCenter: NSPoint(x: 39, y: 12), radius: 1.0, startAngle: 0, endAngle: 360)
+            divider.appendArc(withCenter: NSPoint(x: 43, y: 12), radius: 1.0, startAngle: 0, endAngle: 360)
             NSColor.labelColor.withAlphaComponent(0.22).setFill()
             divider.fill()
 
-            drawCompactGauge(value: left, labelRect: NSRect(x: 0, y: 7.4, width: 11, height: 9), numberRect: NSRect(x: 15, y: 3.2, width: 23, height: 17), arcCenter: NSPoint(x: 24, y: 17.0), forcedColor: forcedColor)
-            drawCompactGauge(value: right, labelRect: NSRect(x: 44, y: 7.4, width: 9, height: 9), numberRect: NSRect(x: 57, y: 3.2, width: 23, height: 17), arcCenter: NSPoint(x: 66, y: 17.0), forcedColor: forcedColor)
+            drawLabeledRing(value: left, labelRect: NSRect(x: 0, y: 3.0, width: 16, height: 18), ringCenter: NSPoint(x: 28, y: 12), forcedColor: forcedColor)
+            drawLabeledRing(value: right, labelRect: NSRect(x: 50, y: 3.0, width: 12, height: 18), ringCenter: NSPoint(x: 74, y: 12), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -590,52 +590,19 @@ enum UsageBadgeRenderer {
         return image
     }
 
-    private static func drawCompactGauge(
+    private static func drawLabeledRing(
         value: BadgeValue,
         labelRect: NSRect,
-        numberRect: NSRect,
-        arcCenter: NSPoint,
+        ringCenter: NSPoint,
         forcedColor: NSColor?
     ) {
-        let percent = value.percent.map { max(0, min(100, $0)) }
-        let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
-        let numberAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.97
-
-        drawString(value.label, in: labelRect, fontSize: 6.4, weight: .semibold, alpha: 0.58, alignment: .left)
-        drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 10.7 : 12.5, weight: .bold, alpha: numberAlpha, alignment: .left)
-
-        drawGaugeArc(center: arcCenter, percent: percent, accent: accent)
-    }
-
-    private static func drawGaugeArc(center: NSPoint, percent: Int?, accent: NSColor) {
-        let radius: CGFloat = 14.6
-        let startAngle: CGFloat = 205
-        let endAngle: CGFloat = 335
-
-        let track = NSBezierPath()
-        track.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: endAngle)
-        track.lineWidth = 1.7
-        track.lineCapStyle = .round
-        NSColor.labelColor.withAlphaComponent(0.13).setStroke()
-        track.stroke()
-
-        guard let percent else {
-            return
-        }
-
-        let clamped = CGFloat(max(0, min(100, percent)))
-        let progressEnd = startAngle + (endAngle - startAngle) * clamped / 100
-        let arc = NSBezierPath()
-        arc.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: progressEnd)
-        arc.lineWidth = 1.7
-        arc.lineCapStyle = .round
-        accent.withAlphaComponent(percent < 20 ? 0.95 : 0.78).setStroke()
-        arc.stroke()
+        drawSideLabel(value.label, in: labelRect)
+        drawRing(value: value, center: ringCenter, forcedColor: forcedColor)
     }
 
     private static func drawRing(value: BadgeValue, center: NSPoint, forcedColor: NSColor?) {
-        let radius: CGFloat = 8.05
-        let lineWidth: CGFloat = 2.2
+        let radius: CGFloat = 9.7
+        let lineWidth: CGFloat = 2.25
         let track = NSBezierPath()
         track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
         track.lineWidth = lineWidth
@@ -659,7 +626,7 @@ enum UsageBadgeRenderer {
             ring.stroke()
         }
 
-        drawText(value.centerText, center: center, yOffset: -4.35, fontSize: value.centerText.count >= 3 ? 7.7 : 9.2, weight: .bold, alpha: 0.98)
+        drawText(value.centerText, center: center, yOffset: -5.5, fontSize: value.centerText.count >= 3 ? 7.4 : 9.0, weight: .bold, alpha: 0.98)
     }
 
     private static func drawReadoutGroup(
@@ -708,8 +675,8 @@ enum UsageBadgeRenderer {
         text.draw(in: rect, withAttributes: attributes)
     }
 
-    private static func drawOutsideLabel(_ text: String, in rect: NSRect) {
-        drawString(text, in: rect, fontSize: 6.4, weight: .semibold, alpha: 0.62, alignment: .center)
+    private static func drawSideLabel(_ text: String, in rect: NSRect) {
+        drawString(text, in: rect, fontSize: text.count > 1 ? 7.2 : 9.2, weight: .semibold, alpha: 0.70, alignment: .center)
     }
 
     private static func drawString(

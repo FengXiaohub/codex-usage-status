@@ -2,17 +2,17 @@
 
 Small macOS menu-bar app for showing Codex usage at a glance.
 
-It displays usage as a compact menu-bar gauge:
+It displays usage as a compact side-labeled double-ring badge:
 
-- left group: 5-hour remaining percentage
-- right group: weekly remaining percentage
-- large number: remaining percentage
-- weak labels: `5h` and `W`
-- subtle arc: remaining quota status
+- left ring group: 5-hour remaining percentage
+- right ring group: weekly remaining percentage
+- ring progress: remaining quota status
+- ring center number: remaining percentage
+- side labels: `5H` and `W`
 
 The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
 
-Compact Gauge is the default display style. It uses no capsule background, so the two values sit lightly in the native menu bar. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5h` / `W` labels and thin status lines.
+Double Ring is the default display style. It uses no capsule background, and each label sits beside its own ring instead of inside the ring. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5h` / `W` labels and thin status lines.
 
 ## Safety model
 
@@ -49,7 +49,7 @@ The app is a menu-bar-only app, so it does not appear in the Dock.
 
 To change the menu-bar display, click the badge and choose Display Style:
 
-- Compact Gauge: compact default with large numbers and subtle status arcs.
+- Double Ring: compact default with side labels and circular quota indicators.
 - Large Readout: larger numbers with subtle status lines for easier reading.
 
 The default refresh interval is 120 seconds, with a 60-second minimum. To override it:

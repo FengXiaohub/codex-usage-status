@@ -25,13 +25,13 @@ Patching the packaged Codex desktop bundle breaks signing and ASAR integrity ass
 
 ## Menu-bar display
 
-The default menu-bar display is Compact Gauge, a compact number-first badge with subtle status arcs.
+The default menu-bar display is a side-labeled double-ring badge.
 
-The left group represents the 5-hour window and the right group represents the weekly window. The number is the primary layer, `5h` / `W` are weak labels, and the low arc under each number encodes remaining quota. The badge intentionally avoids a capsule background so it feels like a native lightweight menu-bar status item instead of a separate floating control.
+The left ring group represents the 5-hour window and the right ring group represents the weekly window. Each label sits beside its own ring rather than inside the ring, so the ring center only has to carry the remaining percentage number. The badge intentionally avoids a capsule background so it feels like a native lightweight menu-bar status item instead of a separate floating control.
 
 This keeps the menu-bar footprint narrow while making the two quota windows visually distinct. The click menu is intentionally minimal: Refresh, Settings, and Quit.
 
-The optional Large Readout style is designed for readability. It uses larger monospaced numbers as the primary visual layer, keeps `5h` / `W` as weak labels, and moves status expression into subtle bottom lines. It is deliberately not a larger version of the earlier ring badge and also avoids the capsule background.
+The optional Large Readout style is designed for readability. It uses larger monospaced numbers as the primary visual layer, keeps `5h` / `W` as weak labels, and moves status expression into subtle bottom lines. It also avoids the capsule background.
 
 ## Refresh behavior
 

@@ -8,7 +8,7 @@ Use this checklist before publishing a GitHub release.
 npm test
 BUILD_ARCH=arm64 npm run build:macos
 BUILD_ARCH=x86_64 npm run build:macos
-npm run package:macos
+npm run package:macos:all
 ```
 
 Confirm the generated app architecture:

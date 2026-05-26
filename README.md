@@ -2,6 +2,8 @@
 
 Small macOS menu-bar app for showing Codex usage at a glance.
 
+![Codex Usage Status menu-bar badge](docs/assets/menu-bar-badge.png)
+
 It displays usage as a compact side-labeled double-ring badge:
 
 - left ring group: 5-hour remaining percentage
@@ -18,7 +20,7 @@ Double Ring is the default display style. It uses no capsule background, and eac
 
 This app only calls the official local Codex app-server method `account/rateLimits/read`. It does not modify Codex, does not read `~/.codex/auth.json`, and does not handle tokens, cookies, sessions, OAuth credentials, API keys, or browser data.
 
-See [SECURITY.md](SECURITY.md) for the hard boundaries.
+See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.md](SECURITY.md) for the hard engineering boundaries.
 
 ## Requirements
 
@@ -26,12 +28,33 @@ See [SECURITY.md](SECURITY.md) for the hard boundaries.
 - Codex desktop installed at `/Applications/Codex.app`
 - You are already signed in to Codex
 
+## Install from release
+
+1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/tollenceld/codex-usage-status/releases/latest):
+   - Apple Silicon: `CodexUsageStatus-<version>-macos-arm64.zip`
+   - Intel: `CodexUsageStatus-<version>-macos-x86_64.zip`
+2. Unzip it.
+3. Move `CodexUsageStatus.app` to `/Applications`.
+4. Open `CodexUsageStatus.app`.
+
+The app is a menu-bar-only app, so it does not appear in the Dock. Optional: add it to macOS System Settings > General > Login Items.
+
+Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polished release, sign with an Apple Developer ID and notarize the app.
+
+## Known limitations
+
+- Codex desktop must be installed at `/Applications/Codex.app`, unless `CODEX_BIN` is set for development.
+- You must already be signed in to Codex.
+- Live usage depends on Codex's local app-server method `account/rateLimits/read`; if that local interface changes, this app may need an update.
+- The app shows usage only. It cannot buy credits, switch accounts, retry login, or change limits.
+- Local builds are ad-hoc signed by default. Downloaded release ZIPs may show Gatekeeper warnings until a notarized build is available.
+
+## Build from source
+
 For source builds:
 
 - Swift toolchain / Xcode Command Line Tools
 - Node.js 20 or later for tests and the optional CLI probe
-
-## Quick start from source
 
 ```sh
 npm test
@@ -86,18 +109,17 @@ CODEX_BIN=/path/to/codex npm run usage
 
 ```sh
 npm run package:macos
+npm run package:macos:all
 ```
 
-This creates a zipped `.app` and `SHA256SUMS.txt` in `dist/`.
+`package:macos` creates a zipped `.app` for the current Mac architecture. `package:macos:all` creates both `arm64` and `x86_64` ZIPs plus `SHA256SUMS.txt` in `dist/`.
 
 Release ZIPs are architecture-specific:
 
 - `CodexUsageStatus-<version>-macos-arm64.zip` for Apple Silicon Macs.
 - `CodexUsageStatus-<version>-macos-x86_64.zip` for Intel Macs.
 
-For another MacBook, the most reliable path is to clone the repository on that Mac and run `npm run install:macos`; it will build the correct native architecture there. A prebuilt ZIP can also be shared as long as the recipient downloads the matching architecture.
-
-Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polished release, sign with an Apple Developer ID and notarize the app.
+For another MacBook, the most reliable source-build path is to clone the repository on that Mac and run `npm run install:macos`; it will build the correct native architecture there.
 
 ## Repository layout
 

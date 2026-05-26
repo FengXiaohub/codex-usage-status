@@ -6,16 +6,17 @@ For a full pre-release pass, also use [release-checklist.md](release-checklist.m
 
 ```sh
 npm test
-npm run package:macos
+npm run package:macos:all
 ```
 
 Output:
 
 - `dist/CodexUsageStatus.app`
-- `dist/CodexUsageStatus-<version>-macos-<arch>.zip`
+- `dist/CodexUsageStatus-<version>-macos-arm64.zip`
+- `dist/CodexUsageStatus-<version>-macos-x86_64.zip`
 - `dist/SHA256SUMS.txt`
 
-The package script builds the app for the Mac's hardware architecture by default. On Apple Silicon, this avoids accidentally creating an Intel-only app from a Rosetta Node.js shell. To package a specific architecture:
+The single-architecture package script builds the app for the Mac's hardware architecture by default. On Apple Silicon, this avoids accidentally creating an Intel-only app from a Rosetta Node.js shell. To package a specific architecture:
 
 ```sh
 BUILD_ARCH=arm64 npm run package:macos

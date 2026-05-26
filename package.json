@@ -15,7 +15,8 @@
     "build:macos": "bash ./scripts/build-macos-app.sh",
     "start:macos": "bash ./scripts/run-macos-app.sh",
     "install:macos": "bash ./scripts/install-macos-app.sh",
-    "package:macos": "bash ./scripts/package-release.sh"
+    "package:macos": "bash ./scripts/package-release.sh",
+    "package:macos:all": "bash ./scripts/package-all-macos.sh"
   },
   "engines": {
     "node": ">=20"

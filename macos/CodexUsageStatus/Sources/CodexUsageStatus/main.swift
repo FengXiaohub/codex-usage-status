@@ -460,7 +460,7 @@ enum BadgeStyle: String, CaseIterable {
     var menuTitle: String {
         switch self {
         case .doubleRing:
-            return "Double Ring"
+            return "Compact Gauge"
         case .largeReadout:
             return "Large Readout"
         }
@@ -480,13 +480,13 @@ enum BadgeStyle: String, CaseIterable {
 }
 
 enum UsageBadgeRenderer {
-    private static let doubleRingImageSize = NSSize(width: 62, height: 24)
+    private static let doubleRingImageSize = NSSize(width: 78, height: 24)
     private static let largeReadoutImageSize = NSSize(width: 86, height: 24)
 
     static func statusItemLength(for style: BadgeStyle) -> CGFloat {
         switch style {
         case .doubleRing:
-            return 66
+            return 82
         case .largeReadout:
             return 90
         }
@@ -548,10 +548,13 @@ enum UsageBadgeRenderer {
             NSColor.clear.setFill()
             rect.fill()
 
-            drawOutsideLabel(left.label, in: NSRect(x: 5, y: 14.9, width: 18, height: 8))
-            drawOutsideLabel(right.label, in: NSRect(x: 39, y: 14.9, width: 18, height: 8))
-            drawRing(value: left, center: NSPoint(x: 14, y: 9.3), forcedColor: forcedColor)
-            drawRing(value: right, center: NSPoint(x: 48, y: 9.3), forcedColor: forcedColor)
+            let divider = NSBezierPath()
+            divider.appendArc(withCenter: NSPoint(x: 39, y: 12), radius: 1.0, startAngle: 0, endAngle: 360)
+            NSColor.labelColor.withAlphaComponent(0.22).setFill()
+            divider.fill()
+
+            drawCompactGauge(value: left, labelRect: NSRect(x: 0, y: 7.4, width: 11, height: 9), numberRect: NSRect(x: 15, y: 3.2, width: 23, height: 17), arcCenter: NSPoint(x: 24, y: 17.0), forcedColor: forcedColor)
+            drawCompactGauge(value: right, labelRect: NSRect(x: 44, y: 7.4, width: 9, height: 9), numberRect: NSRect(x: 57, y: 3.2, width: 23, height: 17), arcCenter: NSPoint(x: 66, y: 17.0), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -585,6 +588,49 @@ enum UsageBadgeRenderer {
 
         image.isTemplate = false
         return image
+    }
+
+    private static func drawCompactGauge(
+        value: BadgeValue,
+        labelRect: NSRect,
+        numberRect: NSRect,
+        arcCenter: NSPoint,
+        forcedColor: NSColor?
+    ) {
+        let percent = value.percent.map { max(0, min(100, $0)) }
+        let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
+        let numberAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.97
+
+        drawString(value.label, in: labelRect, fontSize: 6.4, weight: .semibold, alpha: 0.58, alignment: .left)
+        drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 10.7 : 12.5, weight: .bold, alpha: numberAlpha, alignment: .left)
+
+        drawGaugeArc(center: arcCenter, percent: percent, accent: accent)
+    }
+
+    private static func drawGaugeArc(center: NSPoint, percent: Int?, accent: NSColor) {
+        let radius: CGFloat = 14.6
+        let startAngle: CGFloat = 205
+        let endAngle: CGFloat = 335
+
+        let track = NSBezierPath()
+        track.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: endAngle)
+        track.lineWidth = 1.7
+        track.lineCapStyle = .round
+        NSColor.labelColor.withAlphaComponent(0.13).setStroke()
+        track.stroke()
+
+        guard let percent else {
+            return
+        }
+
+        let clamped = CGFloat(max(0, min(100, percent)))
+        let progressEnd = startAngle + (endAngle - startAngle) * clamped / 100
+        let arc = NSBezierPath()
+        arc.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: progressEnd)
+        arc.lineWidth = 1.7
+        arc.lineCapStyle = .round
+        accent.withAlphaComponent(percent < 20 ? 0.95 : 0.78).setStroke()
+        arc.stroke()
     }
 
     private static func drawRing(value: BadgeValue, center: NSPoint, forcedColor: NSColor?) {

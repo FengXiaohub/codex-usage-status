@@ -8,11 +8,11 @@ It displays usage as a compact side-labeled double-ring badge:
 - right ring group: weekly remaining percentage
 - ring progress: remaining quota status
 - ring center number: remaining percentage
-- side labels: `5H` and `W`
+- side labels: `5H` and `7D`
 
 The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
 
-Double Ring is the default display style. It uses no capsule background, and each label sits beside its own ring instead of inside the ring. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5h` / `W` labels and thin status lines.
+Double Ring is the default display style. It uses no capsule background, and each label sits beside its own ring instead of inside the ring. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5H` / `7D` labels and thin status lines.
 
 ## Safety model
 

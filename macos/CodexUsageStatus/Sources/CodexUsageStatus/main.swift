@@ -495,7 +495,7 @@ enum UsageBadgeRenderer {
     static func image(for usage: UsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
             left: BadgeValue(label: "5H", percent: usage.fiveHour.remainingPercent),
-            right: BadgeValue(label: "W", percent: usage.weekly.remainingPercent),
+            right: BadgeValue(label: "7D", percent: usage.weekly.remainingPercent),
             appearance: appearance
         )
     }
@@ -503,7 +503,7 @@ enum UsageBadgeRenderer {
     static func placeholderImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
             left: BadgeValue(label: "5H", percent: nil),
-            right: BadgeValue(label: "W", percent: nil),
+            right: BadgeValue(label: "7D", percent: nil),
             appearance: appearance
         )
     }
@@ -511,7 +511,7 @@ enum UsageBadgeRenderer {
     static func errorImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
             left: BadgeValue(label: "5H", percent: nil, overrideText: "?"),
-            right: BadgeValue(label: "W", percent: nil, overrideText: "?"),
+            right: BadgeValue(label: "7D", percent: nil, overrideText: "?"),
             appearance: appearance,
             forcedColor: .systemRed
         )
@@ -553,8 +553,8 @@ enum UsageBadgeRenderer {
             NSColor.labelColor.withAlphaComponent(0.22).setFill()
             divider.fill()
 
-            drawLabeledRing(value: left, labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 28, y: 12), forcedColor: forcedColor)
-            drawLabeledRing(value: right, labelRect: NSRect(x: 51, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 74, y: 12), forcedColor: forcedColor)
+            drawLabeledRing(value: left, labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 29, y: 12), forcedColor: forcedColor)
+            drawLabeledRing(value: right, labelRect: NSRect(x: 50, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 75, y: 12), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -681,10 +681,11 @@ enum UsageBadgeRenderer {
 
     private static func drawStackedLabel(_ text: String, in rect: NSRect, alpha: CGFloat) {
         let lines: [String]
-        if text.uppercased() == "5H" {
-            lines = ["5", "H"]
+        let normalized = text.uppercased()
+        if normalized.count == 2 {
+            lines = normalized.map(String.init)
         } else {
-            lines = [text.uppercased()]
+            lines = [normalized]
         }
 
         let fontSize: CGFloat = lines.count > 1 ? 7.4 : 10.0

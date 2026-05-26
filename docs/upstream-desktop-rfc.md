@@ -16,7 +16,7 @@ The packaged desktop app already fetches usage data through its own settings flo
 
 Add a compact always-visible usage indicator using existing in-app data:
 
-- macOS tray badge: side-labeled double-ring status item, with `5H` and `W` beside their rings
+- macOS tray badge: side-labeled double-ring status item, with `5H` and `7D` beside their rings
 - optional large readout style with larger numbers and subtle status lines
 - optional renderer header pill in a low-noise corner of the Codex window
 - minimal dropdown actions for refresh, settings, and quit

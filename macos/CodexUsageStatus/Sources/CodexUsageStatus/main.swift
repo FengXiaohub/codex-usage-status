@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 private let defaultCodexPath = "/Applications/Codex.app/Contents/Resources/codex"
@@ -262,14 +263,14 @@ enum CodexUsageFetcher {
 
         if responseBox.wait(timeout: .now() + 20) == .timedOut {
             standardOutput.fileHandleForReading.readabilityHandler = nil
-            terminateProcess(process)
+            standardInput.fileHandleForWriting.closeFile()
+            terminateProcess(process, finished: finished)
             throw FetchError.timeout
         }
 
         standardOutput.fileHandleForReading.readabilityHandler = nil
         standardInput.fileHandleForWriting.closeFile()
-        terminateProcess(process)
-        _ = finished.wait(timeout: .now() + 1)
+        terminateProcess(process, finished: finished)
         _ = standardError.fileHandleForReading.readDataToEndOfFile()
 
         switch responseBox.result() {
@@ -282,11 +283,15 @@ enum CodexUsageFetcher {
         }
     }
 
-    private static func terminateProcess(_ process: Process) {
+    private static func terminateProcess(_ process: Process, finished: DispatchSemaphore) {
         guard process.isRunning else {
             return
         }
         process.terminate()
+        if finished.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+            _ = finished.wait(timeout: .now() + 1)
+        }
     }
 }
 
@@ -475,15 +480,15 @@ enum BadgeStyle: String, CaseIterable {
 }
 
 enum UsageBadgeRenderer {
-    private static let doubleRingImageSize = NSSize(width: 68, height: 24)
-    private static let largeReadoutImageSize = NSSize(width: 90, height: 24)
+    private static let doubleRingImageSize = NSSize(width: 58, height: 24)
+    private static let largeReadoutImageSize = NSSize(width: 86, height: 24)
 
     static func statusItemLength(for style: BadgeStyle) -> CGFloat {
         switch style {
         case .doubleRing:
-            return 72
+            return 62
         case .largeReadout:
-            return 94
+            return 90
         }
     }
 
@@ -543,17 +548,8 @@ enum UsageBadgeRenderer {
             NSColor.clear.setFill()
             rect.fill()
 
-            let capsuleRect = rect.insetBy(dx: 1, dy: 1)
-            let backgroundPath = NSBezierPath(roundedRect: capsuleRect, xRadius: 11, yRadius: 11)
-            NSColor.labelColor.withAlphaComponent(0.055).setFill()
-            backgroundPath.fill()
-
-            NSColor.labelColor.withAlphaComponent(0.08).setStroke()
-            backgroundPath.lineWidth = 0.7
-            backgroundPath.stroke()
-
-            drawRing(value: left, center: NSPoint(x: 18, y: 12), forcedColor: forcedColor)
-            drawRing(value: right, center: NSPoint(x: 50, y: 12), forcedColor: forcedColor)
+            drawRing(value: left, center: NSPoint(x: 13, y: 12), forcedColor: forcedColor)
+            drawRing(value: right, center: NSPoint(x: 45, y: 12), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -576,22 +572,13 @@ enum UsageBadgeRenderer {
             NSColor.clear.setFill()
             rect.fill()
 
-            let capsuleRect = rect.insetBy(dx: 1, dy: 1)
-            let backgroundPath = NSBezierPath(roundedRect: capsuleRect, xRadius: 11, yRadius: 11)
-            NSColor.labelColor.withAlphaComponent(0.055).setFill()
-            backgroundPath.fill()
-
-            NSColor.labelColor.withAlphaComponent(0.08).setStroke()
-            backgroundPath.lineWidth = 0.7
-            backgroundPath.stroke()
-
             let divider = NSBezierPath()
-            divider.appendArc(withCenter: NSPoint(x: 45, y: 12), radius: 1.15, startAngle: 0, endAngle: 360)
-            NSColor.labelColor.withAlphaComponent(0.22).setFill()
+            divider.appendArc(withCenter: NSPoint(x: 43, y: 12), radius: 1.0, startAngle: 0, endAngle: 360)
+            NSColor.labelColor.withAlphaComponent(0.28).setFill()
             divider.fill()
 
-            drawReadoutGroup(value: left, labelRect: NSRect(x: 5, y: 7.7, width: 12, height: 9), numberRect: NSRect(x: 17, y: 3.8, width: 25, height: 17), lineRect: NSRect(x: 6, y: 3.0, width: 35, height: 1.4), forcedColor: forcedColor)
-            drawReadoutGroup(value: right, labelRect: NSRect(x: 51, y: 7.7, width: 9, height: 9), numberRect: NSRect(x: 61, y: 3.8, width: 25, height: 17), lineRect: NSRect(x: 50, y: 3.0, width: 35, height: 1.4), forcedColor: forcedColor)
+            drawReadoutGroup(value: left, labelRect: NSRect(x: 0, y: 7.9, width: 13, height: 9), numberRect: NSRect(x: 14, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 1, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
+            drawReadoutGroup(value: right, labelRect: NSRect(x: 49, y: 7.9, width: 9, height: 9), numberRect: NSRect(x: 59, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 48, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -599,13 +586,13 @@ enum UsageBadgeRenderer {
     }
 
     private static func drawRing(value: BadgeValue, center: NSPoint, forcedColor: NSColor?) {
-        let radius: CGFloat = 9.9
-        let lineWidth: CGFloat = 2.2
+        let radius: CGFloat = 10.15
+        let lineWidth: CGFloat = 2.35
         let track = NSBezierPath()
         track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
         track.lineWidth = lineWidth
         track.lineCapStyle = .round
-        NSColor.labelColor.withAlphaComponent(0.16).setStroke()
+        NSColor.labelColor.withAlphaComponent(0.20).setStroke()
         track.stroke()
 
         if let percent = value.percent {
@@ -624,8 +611,8 @@ enum UsageBadgeRenderer {
             ring.stroke()
         }
 
-        drawText(value.label, center: center, yOffset: 1.7, fontSize: 5.2, weight: .semibold, alpha: 0.54)
-        drawText(value.centerText, center: center, yOffset: -6.1, fontSize: value.centerText.count >= 3 ? 7.4 : 8.7, weight: .bold, alpha: 0.94)
+        drawText(value.label, center: center, yOffset: 2.3, fontSize: 5.9, weight: .semibold, alpha: 0.68)
+        drawText(value.centerText, center: center, yOffset: -6.1, fontSize: value.centerText.count >= 3 ? 7.9 : 9.7, weight: .bold, alpha: 0.98)
     }
 
     private static func drawReadoutGroup(
@@ -637,13 +624,13 @@ enum UsageBadgeRenderer {
     ) {
         let percent = value.percent.map { max(0, min(100, $0)) }
         let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
-        let emphasisAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.92
+        let emphasisAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.96
 
-        drawString(value.label, in: labelRect, fontSize: 6.3, weight: .semibold, alpha: 0.48, alignment: .left)
-        drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 11.4 : 12.9, weight: .bold, alpha: emphasisAlpha, alignment: .left)
+        drawString(value.label, in: labelRect, fontSize: 6.6, weight: .semibold, alpha: 0.56, alignment: .left)
+        drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 11.6 : 13.2, weight: .bold, alpha: emphasisAlpha, alignment: .left)
 
         let track = NSBezierPath(roundedRect: lineRect, xRadius: 0.7, yRadius: 0.7)
-        NSColor.labelColor.withAlphaComponent(0.12).setFill()
+        NSColor.labelColor.withAlphaComponent(0.14).setFill()
         track.fill()
 
         if let percent {

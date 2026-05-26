@@ -12,7 +12,7 @@ It displays usage as a compact double-ring badge:
 
 The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
 
-Double Ring is the default display style. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes readable numbers with weak `5h` / `W` labels and thin status lines instead of centered rings.
+Double Ring is the default display style. It uses no capsule background, so the two rings sit lightly in the native menu bar. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes readable numbers with weak `5h` / `W` labels and thin status lines instead of centered rings.
 
 ## Safety model
 

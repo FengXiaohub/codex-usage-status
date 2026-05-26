@@ -37,7 +37,9 @@ This avoids spending width on the product name. The icon identifies the status i
 
 Refresh is intentionally conservative:
 
-- automatic refresh every 60 seconds
+- automatic refresh every 120 seconds by default
+- 60-second minimum if overridden with `CODEX_USAGE_REFRESH_SECONDS`
+- failed refreshes back off to 300 seconds
 - no overlapping refreshes
 - manual refresh from the menu
 - 20-second timeout per app-server request

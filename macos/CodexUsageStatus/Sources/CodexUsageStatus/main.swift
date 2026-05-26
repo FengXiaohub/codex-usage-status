@@ -2,7 +2,9 @@ import AppKit
 import Foundation
 
 private let defaultCodexPath = "/Applications/Codex.app/Contents/Resources/codex"
-private let refreshInterval: TimeInterval = 60
+private let minimumRefreshInterval: TimeInterval = 60
+private let defaultRefreshInterval: TimeInterval = 120
+private let errorRetryInterval: TimeInterval = 300
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -13,10 +15,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let fiveHourItem = NSMenuItem(title: "5-hour: --", action: nil, keyEquivalent: "")
     private let weeklyItem = NSMenuItem(title: "Weekly: --", action: nil, keyEquivalent: "")
     private let lastRefreshItem = NSMenuItem(title: "Last refresh: --", action: nil, keyEquivalent: "")
+    private let refreshPolicyItem = NSMenuItem(title: "Refresh interval: --", action: nil, keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshFromMenu), keyEquivalent: "r")
 
     private var timer: Timer?
     private var isRefreshing = false
+    private let refreshInterval = configuredRefreshInterval()
 
     private lazy var dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -38,7 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.toolTip = "Codex usage: waiting for first refresh"
         }
 
-        for item in [summaryItem, fiveHourItem, weeklyItem, lastRefreshItem] {
+        refreshPolicyItem.title = "Refresh interval: \(Int(refreshInterval)) seconds"
+
+        for item in [summaryItem, fiveHourItem, weeklyItem, lastRefreshItem, refreshPolicyItem] {
             item.isEnabled = false
             menu.addItem(item)
         }
@@ -53,7 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem.menu = menu
         refresh()
-        timer = Timer.scheduledTimer(timeInterval: refreshInterval, target: self, selector: #selector(timerDidFire), userInfo: nil, repeats: true)
     }
 
     @objc private func refreshFromMenu() {
@@ -88,13 +93,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
                 self.applyUsage(usage)
+                self.scheduleNextRefresh(after: self.refreshInterval)
             } catch {
                 self.isRefreshing = false
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
                 self.applyError(error)
+                self.scheduleNextRefresh(after: errorRetryInterval)
             }
         }
+    }
+
+    private func scheduleNextRefresh(after seconds: TimeInterval) {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(timeInterval: seconds, target: self, selector: #selector(timerDidFire), userInfo: nil, repeats: false)
     }
 
     private func applyUsage(_ usage: UsageSummary) {
@@ -118,6 +130,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         weeklyItem.title = "Weekly: --"
         lastRefreshItem.title = error.localizedDescription
     }
+}
+
+private func configuredRefreshInterval() -> TimeInterval {
+    let rawValue = ProcessInfo.processInfo.environment["CODEX_USAGE_REFRESH_SECONDS"]
+    let requested = rawValue.flatMap(Double.init) ?? defaultRefreshInterval
+    return max(minimumRefreshInterval, requested)
 }
 
 enum CodexUsageFetcher {
@@ -160,7 +178,12 @@ enum CodexUsageFetcher {
             responseBox.append(handle.availableData)
         }
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            standardOutput.fileHandleForReading.readabilityHandler = nil
+            throw error
+        }
 
         let requestLines = [
             #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}"#,
@@ -172,16 +195,14 @@ enum CodexUsageFetcher {
 
         if responseBox.wait(timeout: .now() + 20) == .timedOut {
             standardOutput.fileHandleForReading.readabilityHandler = nil
-            process.terminate()
+            terminateProcess(process)
             throw FetchError.timeout
         }
 
         standardOutput.fileHandleForReading.readabilityHandler = nil
         standardInput.fileHandleForWriting.closeFile()
-        if finished.wait(timeout: .now() + 1) == .timedOut {
-            process.terminate()
-            _ = finished.wait(timeout: .now() + 1)
-        }
+        terminateProcess(process)
+        _ = finished.wait(timeout: .now() + 1)
         _ = standardError.fileHandleForReading.readDataToEndOfFile()
 
         switch responseBox.result() {
@@ -192,6 +213,13 @@ enum CodexUsageFetcher {
         case .none:
             throw FetchError.missingRateLimitResponse
         }
+    }
+
+    private static func terminateProcess(_ process: Process) {
+        guard process.isRunning else {
+            return
+        }
+        process.terminate()
     }
 }
 

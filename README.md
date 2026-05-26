@@ -43,6 +43,12 @@ npm run install:macos
 
 The app is a menu-bar-only app, so it does not appear in the Dock.
 
+The default refresh interval is 120 seconds, with a 60-second minimum. To override it:
+
+```sh
+CODEX_USAGE_REFRESH_SECONDS=180 npm run start:macos
+```
+
 ## CLI probe
 
 The CLI uses the same safe app-server source and is useful for debugging:

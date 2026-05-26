@@ -23,7 +23,7 @@ Codex itself owns authentication and calls its own backend. This project receive
 
 ## Refresh policy
 
-The default menu-bar refresh interval is 60 seconds. Keep refreshes conservative; usage status does not need sub-second polling.
+The default menu-bar refresh interval is 120 seconds, with a 60-second minimum. Failed refreshes back off to 300 seconds. Keep refreshes conservative; usage status does not need sub-second polling.
 
 ## If this stops working
 

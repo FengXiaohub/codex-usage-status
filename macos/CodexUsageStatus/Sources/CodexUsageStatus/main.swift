@@ -12,11 +12,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let menu = NSMenu()
 
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshFromMenu), keyEquivalent: "r")
+    private let displayStyleItem = NSMenuItem(title: "Display Style", action: nil, keyEquivalent: "")
+    private let displayStyleMenu = NSMenu()
+    private let doubleRingItem = NSMenuItem(title: BadgeStyle.doubleRing.menuTitle, action: #selector(selectDoubleRingStyle), keyEquivalent: "")
+    private let largeReadoutItem = NSMenuItem(title: BadgeStyle.largeReadout.menuTitle, action: #selector(selectLargeReadoutStyle), keyEquivalent: "")
     private let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
 
     private var timer: Timer?
     private var isRefreshing = false
     private let refreshInterval = configuredRefreshInterval()
+    private var badgeStyle = BadgeStyle.load()
     private var lastUsage: UsageSummary?
     private var lastRefreshDate: Date?
     private var lastError: Error?
@@ -31,17 +36,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        statusItem.length = UsageBadgeRenderer.statusItemLength
+        statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
 
         if let button = statusItem.button {
             button.title = ""
-            button.image = UsageBadgeRenderer.placeholderImage(appearance: button.effectiveAppearance)
             button.imagePosition = .imageOnly
             button.toolTip = "Codex usage: waiting for first refresh"
         }
+        renderCurrentBadge()
 
         refreshItem.target = self
         menu.addItem(refreshItem)
+
+        doubleRingItem.target = self
+        largeReadoutItem.target = self
+        displayStyleMenu.addItem(doubleRingItem)
+        displayStyleMenu.addItem(largeReadoutItem)
+        displayStyleItem.submenu = displayStyleMenu
+        menu.addItem(displayStyleItem)
+        updateStyleMenuState()
 
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -68,12 +81,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    @objc private func selectDoubleRingStyle() {
+        setBadgeStyle(.doubleRing)
+    }
+
+    @objc private func selectLargeReadoutStyle() {
+        setBadgeStyle(.largeReadout)
+    }
+
     @objc private func showSettings() {
         let status: String
-        if let lastUsage {
-            status = lastUsage.verboseTitle
-        } else if let lastError {
+        if let lastError {
             status = "Last refresh failed: \(lastError.localizedDescription)"
+        } else if let lastUsage {
+            status = lastUsage.verboseTitle
         } else {
             status = "Waiting for first refresh"
         }
@@ -82,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let message = """
         \(status)
 
+        Display style: \(badgeStyle.menuTitle)
         Refresh interval: \(Int(refreshInterval)) seconds
         Failure retry: \(Int(errorRetryInterval)) seconds
         Last refresh: \(lastRefresh)
@@ -93,6 +115,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    private func setBadgeStyle(_ style: BadgeStyle) {
+        guard badgeStyle != style else {
+            return
+        }
+        badgeStyle = style
+        badgeStyle.save()
+        updateStyleMenuState()
+        renderCurrentBadge()
+    }
+
+    private func updateStyleMenuState() {
+        doubleRingItem.state = badgeStyle == .doubleRing ? .on : .off
+        largeReadoutItem.state = badgeStyle == .largeReadout ? .on : .off
     }
 
     private func refresh() {
@@ -132,23 +169,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyUsage(_ usage: UsageSummary) {
-        if let button = statusItem.button {
-            button.title = ""
-            button.image = UsageBadgeRenderer.image(for: usage, appearance: button.effectiveAppearance)
-            button.toolTip = usage.tooltip(formatter: dateFormatter)
-        }
         lastUsage = usage
         lastRefreshDate = Date()
         lastError = nil
+        renderCurrentBadge()
     }
 
     private func applyError(_ error: Error) {
+        lastError = error
+        renderCurrentBadge()
+    }
+
+    private func renderCurrentBadge() {
+        statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
         if let button = statusItem.button {
             button.title = ""
-            button.image = UsageBadgeRenderer.errorImage(appearance: button.effectiveAppearance)
-            button.toolTip = "Codex usage: \(error.localizedDescription)"
+
+            if let lastError {
+                button.image = UsageBadgeRenderer.errorImage(style: badgeStyle, appearance: button.effectiveAppearance)
+                button.toolTip = "Codex usage: \(lastError.localizedDescription)"
+            } else if let lastUsage {
+                button.image = UsageBadgeRenderer.image(for: lastUsage, style: badgeStyle, appearance: button.effectiveAppearance)
+                button.toolTip = lastUsage.tooltip(formatter: dateFormatter)
+            } else {
+                button.image = UsageBadgeRenderer.placeholderImage(style: badgeStyle, appearance: button.effectiveAppearance)
+                button.toolTip = "Codex usage: waiting for first refresh"
+            }
         }
-        lastError = error
     }
 }
 
@@ -399,28 +446,65 @@ struct UsageWindow: Sendable {
     }
 }
 
-enum UsageBadgeRenderer {
-    static let imageSize = NSSize(width: 68, height: 24)
-    static let statusItemLength: CGFloat = 72
+enum BadgeStyle: String, CaseIterable {
+    case doubleRing
+    case largeReadout
 
-    static func image(for usage: UsageSummary, appearance: NSAppearance) -> NSImage {
-        render(
+    private static let defaultsKey = "BadgeStyle"
+
+    var menuTitle: String {
+        switch self {
+        case .doubleRing:
+            return "Double Ring"
+        case .largeReadout:
+            return "Large Readout"
+        }
+    }
+
+    static func load() -> BadgeStyle {
+        guard let rawValue = UserDefaults.standard.string(forKey: defaultsKey),
+              let style = BadgeStyle(rawValue: rawValue) else {
+            return .doubleRing
+        }
+        return style
+    }
+
+    func save() {
+        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
+    }
+}
+
+enum UsageBadgeRenderer {
+    private static let doubleRingImageSize = NSSize(width: 68, height: 24)
+    private static let largeReadoutImageSize = NSSize(width: 90, height: 24)
+
+    static func statusItemLength(for style: BadgeStyle) -> CGFloat {
+        switch style {
+        case .doubleRing:
+            return 72
+        case .largeReadout:
+            return 94
+        }
+    }
+
+    static func image(for usage: UsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
+        render(style: style,
             left: BadgeValue(label: "5h", percent: usage.fiveHour.remainingPercent),
             right: BadgeValue(label: "W", percent: usage.weekly.remainingPercent),
             appearance: appearance
         )
     }
 
-    static func placeholderImage(appearance: NSAppearance) -> NSImage {
-        render(
+    static func placeholderImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
+        render(style: style,
             left: BadgeValue(label: "5h", percent: nil),
             right: BadgeValue(label: "W", percent: nil),
             appearance: appearance
         )
     }
 
-    static func errorImage(appearance: NSAppearance) -> NSImage {
-        render(
+    static func errorImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
+        render(style: style,
             left: BadgeValue(label: "5h", percent: nil, overrideText: "?"),
             right: BadgeValue(label: "W", percent: nil, overrideText: "?"),
             appearance: appearance,
@@ -429,11 +513,27 @@ enum UsageBadgeRenderer {
     }
 
     private static func render(
+        style: BadgeStyle,
         left: BadgeValue,
         right: BadgeValue,
         appearance: NSAppearance,
         forcedColor: NSColor? = nil
     ) -> NSImage {
+        switch style {
+        case .doubleRing:
+            return renderDoubleRing(left: left, right: right, appearance: appearance, forcedColor: forcedColor)
+        case .largeReadout:
+            return renderLargeReadout(left: left, right: right, appearance: appearance, forcedColor: forcedColor)
+        }
+    }
+
+    private static func renderDoubleRing(
+        left: BadgeValue,
+        right: BadgeValue,
+        appearance: NSAppearance,
+        forcedColor: NSColor?
+    ) -> NSImage {
+        let imageSize = doubleRingImageSize
         let image = NSImage(size: imageSize)
         image.lockFocus()
         defer { image.unlockFocus() }
@@ -454,6 +554,44 @@ enum UsageBadgeRenderer {
 
             drawRing(value: left, center: NSPoint(x: 18, y: 12), forcedColor: forcedColor)
             drawRing(value: right, center: NSPoint(x: 50, y: 12), forcedColor: forcedColor)
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func renderLargeReadout(
+        left: BadgeValue,
+        right: BadgeValue,
+        appearance: NSAppearance,
+        forcedColor: NSColor?
+    ) -> NSImage {
+        let imageSize = largeReadoutImageSize
+        let image = NSImage(size: imageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            let rect = NSRect(origin: .zero, size: imageSize)
+            NSColor.clear.setFill()
+            rect.fill()
+
+            let capsuleRect = rect.insetBy(dx: 1, dy: 1)
+            let backgroundPath = NSBezierPath(roundedRect: capsuleRect, xRadius: 11, yRadius: 11)
+            NSColor.labelColor.withAlphaComponent(0.055).setFill()
+            backgroundPath.fill()
+
+            NSColor.labelColor.withAlphaComponent(0.08).setStroke()
+            backgroundPath.lineWidth = 0.7
+            backgroundPath.stroke()
+
+            let divider = NSBezierPath()
+            divider.appendArc(withCenter: NSPoint(x: 45, y: 12), radius: 1.15, startAngle: 0, endAngle: 360)
+            NSColor.labelColor.withAlphaComponent(0.22).setFill()
+            divider.fill()
+
+            drawReadoutGroup(value: left, labelRect: NSRect(x: 5, y: 7.7, width: 12, height: 9), numberRect: NSRect(x: 17, y: 3.8, width: 25, height: 17), lineRect: NSRect(x: 6, y: 3.0, width: 35, height: 1.4), forcedColor: forcedColor)
+            drawReadoutGroup(value: right, labelRect: NSRect(x: 51, y: 7.7, width: 9, height: 9), numberRect: NSRect(x: 61, y: 3.8, width: 25, height: 17), lineRect: NSRect(x: 50, y: 3.0, width: 35, height: 1.4), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -490,6 +628,33 @@ enum UsageBadgeRenderer {
         drawText(value.centerText, center: center, yOffset: -6.1, fontSize: value.centerText.count >= 3 ? 7.4 : 8.7, weight: .bold, alpha: 0.94)
     }
 
+    private static func drawReadoutGroup(
+        value: BadgeValue,
+        labelRect: NSRect,
+        numberRect: NSRect,
+        lineRect: NSRect,
+        forcedColor: NSColor?
+    ) {
+        let percent = value.percent.map { max(0, min(100, $0)) }
+        let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
+        let emphasisAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.92
+
+        drawString(value.label, in: labelRect, fontSize: 6.3, weight: .semibold, alpha: 0.48, alignment: .left)
+        drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 11.4 : 12.9, weight: .bold, alpha: emphasisAlpha, alignment: .left)
+
+        let track = NSBezierPath(roundedRect: lineRect, xRadius: 0.7, yRadius: 0.7)
+        NSColor.labelColor.withAlphaComponent(0.12).setFill()
+        track.fill()
+
+        if let percent {
+            let fillWidth = max(1.2, lineRect.width * CGFloat(percent) / 100)
+            let fillRect = NSRect(x: lineRect.minX, y: lineRect.minY, width: fillWidth, height: lineRect.height)
+            let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: 0.7, yRadius: 0.7)
+            accent.withAlphaComponent(percent < 20 ? 0.95 : 0.72).setFill()
+            fillPath.fill()
+        }
+    }
+
     private static func drawText(
         _ text: String,
         center: NSPoint,
@@ -506,6 +671,26 @@ enum UsageBadgeRenderer {
         ]
         let height = fontSize + 2
         let rect = NSRect(x: center.x - 10, y: center.y + yOffset, width: 20, height: height)
+        text.draw(in: rect, withAttributes: attributes)
+    }
+
+    private static func drawString(
+        _ text: String,
+        in rect: NSRect,
+        fontSize: CGFloat,
+        weight: NSFont.Weight,
+        alpha: CGFloat,
+        alignment: NSTextAlignment
+    ) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = alignment
+        style.lineBreakMode = .byClipping
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight),
+            .foregroundColor: NSColor.labelColor.withAlphaComponent(alpha),
+            .paragraphStyle: style,
+        ]
         text.draw(in: rect, withAttributes: attributes)
     }
 

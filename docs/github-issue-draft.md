@@ -11,6 +11,7 @@ Codex desktop already shows 5-hour and weekly usage limits in Settings, but the 
 Add an always-visible compact usage indicator:
 
 - macOS menu-bar/tray double-ring badge for 5-hour and weekly usage
+- optional large readout style for users who need clearer numbers
 - optional compact header/status pill inside the Codex desktop window
 - minimal dropdown actions for refresh, settings, and quit
 

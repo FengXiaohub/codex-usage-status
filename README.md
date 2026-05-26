@@ -12,6 +12,8 @@ It displays usage as a compact double-ring badge:
 
 The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
 
+Double Ring is the default display style. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes readable numbers with weak `5h` / `W` labels and thin status lines instead of centered rings.
+
 ## Safety model
 
 This app only calls the official local Codex app-server method `account/rateLimits/read`. It does not modify Codex, does not read `~/.codex/auth.json`, and does not handle tokens, cookies, sessions, OAuth credentials, API keys, or browser data.
@@ -44,6 +46,11 @@ npm run install:macos
 ```
 
 The app is a menu-bar-only app, so it does not appear in the Dock.
+
+To change the menu-bar display, click the badge and choose Display Style:
+
+- Double Ring: compact default with two circular quota indicators.
+- Large Readout: larger numbers with subtle status lines for easier reading.
 
 The default refresh interval is 120 seconds, with a 60-second minimum. To override it:
 

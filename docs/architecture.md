@@ -39,6 +39,26 @@ The relevant response fields are:
 
 The UI displays remaining percent as `100 - usedPercent`.
 
+## Source layers
+
+The native macOS app is intentionally split by responsibility:
+
+- `App/`: AppKit lifecycle, menu actions, refresh timing, and settings display.
+- `Codex/`: the only layer that starts `codex app-server --listen stdio://`.
+- `Domain/`: response decoding and remaining-quota normalization.
+- `UI/`: double-ring and large-readout badge rendering.
+
+```mermaid
+flowchart LR
+  Entry["main.swift"] --> App["App"]
+  App --> Codex["Codex"]
+  App --> UI["UI"]
+  Codex --> Domain["Domain"]
+  UI --> Domain
+```
+
+This keeps the safety boundary reviewable: the UI layer never reads credentials, browser state, screenshots, or network APIs.
+
 ## Why not patch Codex.app?
 
 Patching the packaged desktop app breaks the official app signature and ASAR integrity model. That is brittle, hard to share safely, and can cause launch crashes. This repository only builds its own companion menu-bar app and leaves the official Codex bundle untouched.

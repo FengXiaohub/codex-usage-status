@@ -102,7 +102,14 @@ Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polis
 ## Repository layout
 
 - `macos/CodexUsageStatus/`: native AppKit menu-bar app.
-- `src/`: Node CLI probe and shared response formatter tests.
+  - `App/`: status item lifecycle, menu actions, refresh scheduling, and configuration.
+  - `Codex/`: local Codex app-server JSON-RPC client.
+  - `Domain/`: rate-limit response models and usage normalization.
+  - `UI/`: badge styles and AppKit drawing code.
+- `src/`: Node CLI probe for diagnostics and tests.
+- `test/`: Node tests for response normalization and sensitive-output redaction.
 - `scripts/`: build, run, install, and release packaging scripts.
 - `.github/workflows/`: CI and release artifact workflows.
-- `docs/`: architecture, release, and upstream integration notes.
+- `docs/`: architecture, structure, release, and upstream integration notes.
+
+See [docs/project-structure.md](docs/project-structure.md) for the source layout and dependency boundaries.

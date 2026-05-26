@@ -15,6 +15,7 @@ Keep the project boring, narrow, and safe.
 
 ```sh
 npm test
-npm run build:macos
+BUILD_ARCH=arm64 npm run build:macos
+BUILD_ARCH=x86_64 npm run build:macos
 dist/CodexUsageStatus.app/Contents/MacOS/CodexUsageStatus --once
 ```

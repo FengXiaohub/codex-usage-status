@@ -1,5 +1,7 @@
 # Release guide
 
+For a full pre-release pass, also use [release-checklist.md](release-checklist.md).
+
 ## Local release artifact
 
 ```sh

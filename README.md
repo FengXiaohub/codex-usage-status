@@ -2,13 +2,15 @@
 
 Small macOS menu-bar app for showing Codex usage at a glance.
 
-It displays two remaining-usage windows in a compact menu-bar title:
+It displays usage as a compact double-ring badge:
 
-```text
-5h 54% 7d 62%
-```
+- left ring: 5-hour remaining percentage
+- right ring: weekly remaining percentage
+- ring progress: remaining quota
+- center number: remaining percentage
+- small in-ring labels: `5h` and `W`
 
-`5h` is the short-window remaining percentage. `7d` is the weekly-window remaining percentage. Clicking the menu-bar item shows reset times and a manual refresh action.
+The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
 
 ## Safety model
 
@@ -57,6 +59,8 @@ The CLI uses the same safe app-server source and is useful for debugging:
 npm run usage
 npm run usage:json
 ```
+
+The CLI output remains text-based for logs and tests even though the macOS menu-bar UI is a graphic badge.
 
 If your Codex binary lives somewhere else:
 

@@ -25,13 +25,11 @@ Patching the packaged Codex desktop bundle breaks signing and ASAR integrity ass
 
 ## Menu-bar display
 
-The menu-bar title is compact and semantic:
+The menu-bar display is a compact double-ring badge, not a flat text label.
 
-```text
-5h 54% 7d 62%
-```
+The left ring represents the 5-hour window and the right ring represents the weekly window. Ring progress encodes remaining quota. Each ring puts the remaining percentage number in the center, with `5h` / `W` as low-emphasis in-ring labels above the number.
 
-This avoids spending width on the product name. The icon identifies the status item, while the text is reserved for the two values users need most.
+This keeps the menu-bar footprint narrow while making the two quota windows visually distinct. The click menu is intentionally minimal: Refresh, Settings, and Quit.
 
 ## Refresh behavior
 
@@ -52,7 +50,7 @@ Refresh is intentionally conservative:
 
 ## Good next issues
 
-- User preference for title style: compact, detailed, icon-only.
+- User preference for badge color thresholds or icon-only fallback.
 - Optional LaunchAgent helper for start-at-login.
 - Notarized release pipeline.
 - Better error menu with a copyable diagnostic summary that still redacts secrets.

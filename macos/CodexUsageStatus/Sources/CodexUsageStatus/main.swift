@@ -11,16 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
 
-    private let summaryItem = NSMenuItem(title: "Codex usage", action: nil, keyEquivalent: "")
-    private let fiveHourItem = NSMenuItem(title: "5-hour: --", action: nil, keyEquivalent: "")
-    private let weeklyItem = NSMenuItem(title: "Weekly: --", action: nil, keyEquivalent: "")
-    private let lastRefreshItem = NSMenuItem(title: "Last refresh: --", action: nil, keyEquivalent: "")
-    private let refreshPolicyItem = NSMenuItem(title: "Refresh interval: --", action: nil, keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshFromMenu), keyEquivalent: "r")
+    private let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
 
     private var timer: Timer?
     private var isRefreshing = false
     private let refreshInterval = configuredRefreshInterval()
+    private var lastUsage: UsageSummary?
+    private var lastRefreshDate: Date?
+    private var lastError: Error?
 
     private lazy var dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -32,26 +31,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        statusItem.length = UsageBadgeRenderer.statusItemLength
 
         if let button = statusItem.button {
-            button.title = "5h -- 7d --"
-            button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-            button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: "Codex usage")
-            button.image?.isTemplate = true
-            button.imagePosition = .imageLeading
+            button.title = ""
+            button.image = UsageBadgeRenderer.placeholderImage(appearance: button.effectiveAppearance)
+            button.imagePosition = .imageOnly
             button.toolTip = "Codex usage: waiting for first refresh"
         }
 
-        refreshPolicyItem.title = "Refresh interval: \(Int(refreshInterval)) seconds"
-
-        for item in [summaryItem, fiveHourItem, weeklyItem, lastRefreshItem, refreshPolicyItem] {
-            item.isEnabled = false
-            menu.addItem(item)
-        }
-        menu.addItem(.separator())
-
         refreshItem.target = self
         menu.addItem(refreshItem)
+
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
@@ -71,6 +66,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func showSettings() {
+        let status: String
+        if let lastUsage {
+            status = lastUsage.verboseTitle
+        } else if let lastError {
+            status = "Last refresh failed: \(lastError.localizedDescription)"
+        } else {
+            status = "Waiting for first refresh"
+        }
+
+        let lastRefresh = lastRefreshDate.map { dateFormatter.string(from: $0) } ?? "Never"
+        let message = """
+        \(status)
+
+        Refresh interval: \(Int(refreshInterval)) seconds
+        Failure retry: \(Int(errorRetryInterval)) seconds
+        Last refresh: \(lastRefresh)
+        Data source: local Codex app-server
+        """
+
+        let alert = NSAlert()
+        alert.messageText = "Codex Usage Status"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func refresh() {
@@ -111,24 +133,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyUsage(_ usage: UsageSummary) {
         if let button = statusItem.button {
-            button.title = usage.menuTitle
+            button.title = ""
+            button.image = UsageBadgeRenderer.image(for: usage, appearance: button.effectiveAppearance)
             button.toolTip = usage.tooltip(formatter: dateFormatter)
         }
-        summaryItem.title = usage.planType.map { "\(usage.verboseTitle) (\($0))" } ?? usage.verboseTitle
-        fiveHourItem.title = "5-hour: \(usage.fiveHour.displayText(formatter: dateFormatter))"
-        weeklyItem.title = "Weekly: \(usage.weekly.displayText(formatter: dateFormatter))"
-        lastRefreshItem.title = "Last refresh: \(dateFormatter.string(from: Date()))"
+        lastUsage = usage
+        lastRefreshDate = Date()
+        lastError = nil
     }
 
     private func applyError(_ error: Error) {
         if let button = statusItem.button {
-            button.title = "5h ? 7d ?"
+            button.title = ""
+            button.image = UsageBadgeRenderer.errorImage(appearance: button.effectiveAppearance)
             button.toolTip = "Codex usage: \(error.localizedDescription)"
         }
-        summaryItem.title = "Unable to read Codex usage"
-        fiveHourItem.title = "5-hour: --"
-        weeklyItem.title = "Weekly: --"
-        lastRefreshItem.title = error.localizedDescription
+        lastError = error
     }
 }
 
@@ -376,6 +396,157 @@ struct UsageWindow: Sendable {
             return "\(remainingPercent)% remaining, reset unknown"
         }
         return "\(remainingPercent)% remaining, resets \(formatter.string(from: resetsAt))"
+    }
+}
+
+enum UsageBadgeRenderer {
+    static let imageSize = NSSize(width: 68, height: 24)
+    static let statusItemLength: CGFloat = 72
+
+    static func image(for usage: UsageSummary, appearance: NSAppearance) -> NSImage {
+        render(
+            left: BadgeValue(label: "5h", percent: usage.fiveHour.remainingPercent),
+            right: BadgeValue(label: "W", percent: usage.weekly.remainingPercent),
+            appearance: appearance
+        )
+    }
+
+    static func placeholderImage(appearance: NSAppearance) -> NSImage {
+        render(
+            left: BadgeValue(label: "5h", percent: nil),
+            right: BadgeValue(label: "W", percent: nil),
+            appearance: appearance
+        )
+    }
+
+    static func errorImage(appearance: NSAppearance) -> NSImage {
+        render(
+            left: BadgeValue(label: "5h", percent: nil, overrideText: "?"),
+            right: BadgeValue(label: "W", percent: nil, overrideText: "?"),
+            appearance: appearance,
+            forcedColor: .systemRed
+        )
+    }
+
+    private static func render(
+        left: BadgeValue,
+        right: BadgeValue,
+        appearance: NSAppearance,
+        forcedColor: NSColor? = nil
+    ) -> NSImage {
+        let image = NSImage(size: imageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            let rect = NSRect(origin: .zero, size: imageSize)
+            NSColor.clear.setFill()
+            rect.fill()
+
+            let capsuleRect = rect.insetBy(dx: 1, dy: 1)
+            let backgroundPath = NSBezierPath(roundedRect: capsuleRect, xRadius: 11, yRadius: 11)
+            NSColor.labelColor.withAlphaComponent(0.055).setFill()
+            backgroundPath.fill()
+
+            NSColor.labelColor.withAlphaComponent(0.08).setStroke()
+            backgroundPath.lineWidth = 0.7
+            backgroundPath.stroke()
+
+            drawRing(value: left, center: NSPoint(x: 18, y: 12), forcedColor: forcedColor)
+            drawRing(value: right, center: NSPoint(x: 50, y: 12), forcedColor: forcedColor)
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func drawRing(value: BadgeValue, center: NSPoint, forcedColor: NSColor?) {
+        let radius: CGFloat = 9.9
+        let lineWidth: CGFloat = 2.2
+        let track = NSBezierPath()
+        track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+        track.lineWidth = lineWidth
+        track.lineCapStyle = .round
+        NSColor.labelColor.withAlphaComponent(0.16).setStroke()
+        track.stroke()
+
+        if let percent = value.percent {
+            let progress = max(0, min(100, percent))
+            let ring = NSBezierPath()
+            ring.appendArc(
+                withCenter: center,
+                radius: radius,
+                startAngle: 90,
+                endAngle: 90 - CGFloat(progress) * 3.6,
+                clockwise: true
+            )
+            ring.lineWidth = lineWidth
+            ring.lineCapStyle = .round
+            (forcedColor ?? color(for: progress)).withAlphaComponent(0.92).setStroke()
+            ring.stroke()
+        }
+
+        drawText(value.label, center: center, yOffset: 1.7, fontSize: 5.2, weight: .semibold, alpha: 0.54)
+        drawText(value.centerText, center: center, yOffset: -6.1, fontSize: value.centerText.count >= 3 ? 7.4 : 8.7, weight: .bold, alpha: 0.94)
+    }
+
+    private static func drawText(
+        _ text: String,
+        center: NSPoint,
+        yOffset: CGFloat,
+        fontSize: CGFloat,
+        weight: NSFont.Weight,
+        alpha: CGFloat
+    ) {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor.withAlphaComponent(alpha),
+            .paragraphStyle: centeredParagraphStyle,
+        ]
+        let height = fontSize + 2
+        let rect = NSRect(x: center.x - 10, y: center.y + yOffset, width: 20, height: height)
+        text.draw(in: rect, withAttributes: attributes)
+    }
+
+    private static var centeredParagraphStyle: NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        style.lineBreakMode = .byClipping
+        return style
+    }
+
+    private static func color(for percent: Int) -> NSColor {
+        switch percent {
+        case 50...100:
+            return .systemGreen
+        case 20..<50:
+            return .systemOrange
+        default:
+            return .systemRed
+        }
+    }
+}
+
+struct BadgeValue {
+    let label: String
+    let percent: Int?
+    let overrideText: String?
+
+    init(label: String, percent: Int?, overrideText: String? = nil) {
+        self.label = label
+        self.percent = percent
+        self.overrideText = overrideText
+    }
+
+    var centerText: String {
+        if let overrideText {
+            return overrideText
+        }
+        guard let percent else {
+            return "--"
+        }
+        return "\(percent)"
     }
 }
 

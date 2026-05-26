@@ -16,9 +16,9 @@ The packaged desktop app already fetches usage data through its own settings flo
 
 Add a compact always-visible usage indicator using existing in-app data:
 
-- macOS tray title: `5h 66% 7d 63%`
+- macOS tray badge: double-ring status item, with `5h` on the left and `W` on the right
 - optional renderer header pill in a low-noise corner of the Codex window
-- dropdown details for reset times
+- minimal dropdown actions for refresh, settings, and quit
 
 ## Constraints
 
@@ -32,6 +32,6 @@ Add a compact always-visible usage indicator using existing in-app data:
 
 1. Reuse the existing usage-limit parser.
 2. Send compact usage summary to the main process with existing tray state updates.
-3. On macOS, call `Tray.setTitle(summary)` when data is fresh.
-4. Render reset details inside the existing tray menu.
+3. On macOS, render a custom tray image instead of a flat text title.
+4. Keep reset details in Settings or tooltip-level disclosure.
 5. Leave Settings as the canonical detailed view.

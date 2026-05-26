@@ -480,13 +480,13 @@ enum BadgeStyle: String, CaseIterable {
 }
 
 enum UsageBadgeRenderer {
-    private static let doubleRingImageSize = NSSize(width: 58, height: 24)
+    private static let doubleRingImageSize = NSSize(width: 62, height: 24)
     private static let largeReadoutImageSize = NSSize(width: 86, height: 24)
 
     static func statusItemLength(for style: BadgeStyle) -> CGFloat {
         switch style {
         case .doubleRing:
-            return 62
+            return 66
         case .largeReadout:
             return 90
         }
@@ -548,8 +548,10 @@ enum UsageBadgeRenderer {
             NSColor.clear.setFill()
             rect.fill()
 
-            drawRing(value: left, center: NSPoint(x: 13, y: 12), forcedColor: forcedColor)
-            drawRing(value: right, center: NSPoint(x: 45, y: 12), forcedColor: forcedColor)
+            drawOutsideLabel(left.label, in: NSRect(x: 5, y: 14.9, width: 18, height: 8))
+            drawOutsideLabel(right.label, in: NSRect(x: 39, y: 14.9, width: 18, height: 8))
+            drawRing(value: left, center: NSPoint(x: 14, y: 9.3), forcedColor: forcedColor)
+            drawRing(value: right, center: NSPoint(x: 48, y: 9.3), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -586,8 +588,8 @@ enum UsageBadgeRenderer {
     }
 
     private static func drawRing(value: BadgeValue, center: NSPoint, forcedColor: NSColor?) {
-        let radius: CGFloat = 10.15
-        let lineWidth: CGFloat = 2.35
+        let radius: CGFloat = 8.05
+        let lineWidth: CGFloat = 2.2
         let track = NSBezierPath()
         track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
         track.lineWidth = lineWidth
@@ -611,8 +613,7 @@ enum UsageBadgeRenderer {
             ring.stroke()
         }
 
-        drawText(value.label, center: center, yOffset: 2.3, fontSize: 5.9, weight: .semibold, alpha: 0.68)
-        drawText(value.centerText, center: center, yOffset: -6.1, fontSize: value.centerText.count >= 3 ? 7.9 : 9.7, weight: .bold, alpha: 0.98)
+        drawText(value.centerText, center: center, yOffset: -4.35, fontSize: value.centerText.count >= 3 ? 7.7 : 9.2, weight: .bold, alpha: 0.98)
     }
 
     private static func drawReadoutGroup(
@@ -659,6 +660,10 @@ enum UsageBadgeRenderer {
         let height = fontSize + 2
         let rect = NSRect(x: center.x - 10, y: center.y + yOffset, width: 20, height: height)
         text.draw(in: rect, withAttributes: attributes)
+    }
+
+    private static func drawOutsideLabel(_ text: String, in rect: NSRect) {
+        drawString(text, in: rect, fontSize: 6.4, weight: .semibold, alpha: 0.62, alignment: .center)
     }
 
     private static func drawString(

@@ -33,7 +33,7 @@ export function formatMenuTitle(usage) {
     parts.push(`5h ${usage.fiveHour.remainingPercent}%`);
   }
   if (usage.weekly) {
-    parts.push(`W ${usage.weekly.remainingPercent}%`);
+    parts.push(`7d ${usage.weekly.remainingPercent}%`);
   }
   return parts.length > 0 ? `Codex ${parts.join(" ")}` : "Codex usage";
 }

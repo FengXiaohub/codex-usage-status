@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: macos-15
+    strategy:
+      matrix:
+        arch: [arm64, x86_64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,3 +18,5 @@ jobs:
           node-version: 24
       - run: npm test
       - run: npm run build:macos
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}

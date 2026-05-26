@@ -39,6 +39,13 @@ npm run build:macos
 npm run start:macos
 ```
 
+The build script defaults to the Mac's hardware architecture. On Apple Silicon this creates an `arm64` app, even if Node.js is running under Rosetta. To build a specific architecture:
+
+```sh
+BUILD_ARCH=arm64 npm run build:macos
+BUILD_ARCH=x86_64 npm run build:macos
+```
+
 To install into `/Applications`:
 
 ```sh
@@ -82,6 +89,13 @@ npm run package:macos
 ```
 
 This creates a zipped `.app` and `SHA256SUMS.txt` in `dist/`.
+
+Release ZIPs are architecture-specific:
+
+- `CodexUsageStatus-<version>-macos-arm64.zip` for Apple Silicon Macs.
+- `CodexUsageStatus-<version>-macos-x86_64.zip` for Intel Macs.
+
+For another MacBook, the most reliable path is to clone the repository on that Mac and run `npm run install:macos`; it will build the correct native architecture there. A prebuilt ZIP can also be shared as long as the recipient downloads the matching architecture.
 
 Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polished release, sign with an Apple Developer ID and notarize the app.
 

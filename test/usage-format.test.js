@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { redactSensitive } from "../src/app-server-client.js";
 import { formatMenuTitle, normalizeUsage } from "../src/usage-format.js";
 
 test("normalizes Codex 5-hour and weekly windows", () => {
@@ -27,7 +28,7 @@ test("normalizes Codex 5-hour and weekly windows", () => {
   assert.equal(usage.planType, "plus");
   assert.equal(usage.fiveHour.remainingPercent, 66);
   assert.equal(usage.weekly.remainingPercent, 63);
-  assert.equal(formatMenuTitle(usage), "Codex 5h 66% W 63%");
+  assert.equal(formatMenuTitle(usage), "Codex 5h 66% 7d 63%");
 });
 
 test("falls back to backward-compatible single snapshot", () => {
@@ -47,4 +48,21 @@ test("falls back to backward-compatible single snapshot", () => {
 
   assert.equal(usage.fiveHour.remainingPercent, 100);
   assert.equal(usage.weekly.remainingPercent, 0);
+});
+
+test("redacts sensitive app-server stderr snippets", () => {
+  const redacted = redactSensitive(
+    [
+      "token: sk-local-development-secret",
+      "Authorization = Bearer should-not-survive",
+      "api_key=also-should-not-survive",
+      "aaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbb.cccccccccccccccccccc",
+    ].join("\n"),
+  );
+
+  assert.match(redacted, /token: \[redacted\]/);
+  assert.match(redacted, /Authorization = \[redacted\]/);
+  assert.match(redacted, /api_key=\[redacted\]/);
+  assert.match(redacted, /\[redacted-jwt\]/);
+  assert.doesNotMatch(redacted, /should-not-survive|also-should-not-survive/);
 });

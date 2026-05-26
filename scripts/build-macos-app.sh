@@ -9,15 +9,53 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 VERSION="${VERSION:-0.1.0}"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
 
-swift build \
-  --package-path "$SWIFT_DIR" \
+detect_hardware_arch() {
+  local machine
+  machine="$(uname -m)"
+
+  if [[ "$machine" == "x86_64" ]]; then
+    if [[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null || true)" == "1" ]]; then
+      echo "arm64"
+      return
+    fi
+  fi
+
+  echo "$machine"
+}
+
+BUILD_ARCH="${BUILD_ARCH:-$(detect_hardware_arch)}"
+
+case "$BUILD_ARCH" in
+  arm64 | x86_64)
+    ;;
+  *)
+    echo "Unsupported BUILD_ARCH '$BUILD_ARCH'. Use arm64 or x86_64." >&2
+    exit 1
+    ;;
+esac
+
+TRIPLE="${BUILD_ARCH}-apple-macosx${MACOSX_DEPLOYMENT_TARGET}"
+BUILD_ARGS=(
+  --package-path "$SWIFT_DIR"
   -c release
+  --triple "$TRIPLE"
+)
+
+swift build "${BUILD_ARGS[@]}"
+BINARY_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
+BINARY_PATH="$BINARY_DIR/CodexUsageStatus"
+
+if [[ ! -x "$BINARY_PATH" ]]; then
+  echo "Build succeeded, but expected binary was not found at $BINARY_PATH" >&2
+  exit 1
+fi
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR"
 
-cp "$SWIFT_DIR/.build/release/CodexUsageStatus" "$MACOS_DIR/CodexUsageStatus"
+cp "$BINARY_PATH" "$MACOS_DIR/CodexUsageStatus"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -37,7 +75,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundleVersion</key>
   <string>__VERSION__</string>
   <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
+  <string>__MIN_MACOS__</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHumanReadableCopyright</key>
@@ -47,6 +85,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 PLIST
 
 /usr/bin/sed -i '' "s/__VERSION__/$VERSION/g" "$CONTENTS_DIR/Info.plist"
+/usr/bin/sed -i '' "s/__MIN_MACOS__/$MACOSX_DEPLOYMENT_TARGET/g" "$CONTENTS_DIR/Info.plist"
 
 codesign --force --sign "$CODESIGN_IDENTITY" "$APP_DIR" >/dev/null
 

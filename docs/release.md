@@ -13,6 +13,13 @@ Output:
 - `dist/CodexUsageStatus-<version>-macos-<arch>.zip`
 - `dist/SHA256SUMS.txt`
 
+The package script builds the app for the Mac's hardware architecture by default. On Apple Silicon, this avoids accidentally creating an Intel-only app from a Rosetta Node.js shell. To package a specific architecture:
+
+```sh
+BUILD_ARCH=arm64 npm run package:macos
+BUILD_ARCH=x86_64 npm run package:macos
+```
+
 ## Signing
 
 By default, the local build is ad-hoc signed:
@@ -31,7 +38,7 @@ Notarization is intentionally not automated in this repository because it requir
 
 ## Architecture
 
-The local package builds for the current Mac architecture. GitHub Actions can produce a macOS artifact on the runner architecture. If universal releases are needed, build separate `arm64` and `x86_64` artifacts or add a universal build step after confirming both targets compile in CI.
+The local package builds for the detected hardware architecture unless `BUILD_ARCH` is set. GitHub Actions can produce a macOS artifact on the runner architecture. If universal releases are needed, build separate `arm64` and `x86_64` artifacts or add a universal build step after confirming both targets compile in CI.
 
 ## User install flow
 

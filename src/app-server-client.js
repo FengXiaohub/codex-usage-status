@@ -145,8 +145,8 @@ export async function readCodexRateLimits(options = {}) {
   }
 }
 
-function redactSensitive(value) {
+export function redactSensitive(value) {
   return value
     .replace(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, "[redacted-jwt]")
-    .replace(/(token|cookie|session|authorization)(\\s*[:=]\\s*)\\S+/gi, "$1$2[redacted]");
+    .replace(/((?:token|cookie|session|authorization|api[_-]?key)\s*[:=]\s*)[^\r\n]+/gi, "$1[redacted]");
 }

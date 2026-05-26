@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm test
+      - run: npm run package:macos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CodexUsageStatus-macos
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt

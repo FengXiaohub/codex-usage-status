@@ -1,0 +1,37 @@
+# Upstream desktop integration RFC
+
+This is the preferred path if the Codex desktop UI source accepts external contributions or internal patches.
+
+## Existing implementation hook
+
+The packaged desktop app already fetches usage data through its own settings flow. Static inspection showed:
+
+- usage query key: `rate-limit-status`
+- backend path: `/wham/usage`
+- refresh interval: one minute
+- parsed fields: `primary_window`, `secondary_window`, `used_percent`, `reset_at`, `credits`, `plan_type`
+- main-process tray data already includes a `usageLimits` array
+
+## Proposed change
+
+Add a compact always-visible usage indicator using existing in-app data:
+
+- macOS tray title: `5h 66% 7d 63%`
+- optional renderer header pill in a low-noise corner of the Codex window
+- dropdown details for reset times
+
+## Constraints
+
+- Do not add new backend endpoints.
+- Do not increase refresh frequency beyond the existing one-minute cadence.
+- Do not expose or log credentials.
+- Do not add login automation, account switching, or credit-purchase automation.
+- Do not patch the signed production app bundle after build.
+
+## Minimal desktop patch shape
+
+1. Reuse the existing usage-limit parser.
+2. Send compact usage summary to the main process with existing tray state updates.
+3. On macOS, call `Tray.setTitle(summary)` when data is fresh.
+4. Render reset details inside the existing tray menu.
+5. Leave Settings as the canonical detailed view.

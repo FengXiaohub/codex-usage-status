@@ -1,0 +1,19 @@
+# Contributing
+
+Keep the project boring, narrow, and safe.
+
+## Rules for changes
+
+- Do not read or parse credential files.
+- Do not add browser scraping, cookie access, OCR, login automation, account switching, or quota-bypass behavior.
+- Keep refreshes conservative.
+- Prefer the official local Codex app-server protocol.
+- Keep the menu-bar title compact enough for crowded macOS menu bars.
+
+## Local checks
+
+```sh
+npm test
+npm run build:macos
+dist/CodexUsageStatus.app/Contents/MacOS/CodexUsageStatus --once
+```

@@ -553,8 +553,8 @@ enum UsageBadgeRenderer {
             NSColor.labelColor.withAlphaComponent(0.22).setFill()
             divider.fill()
 
-            drawLabeledRing(value: left, labelRect: NSRect(x: 0, y: 3.0, width: 16, height: 18), ringCenter: NSPoint(x: 28, y: 12), forcedColor: forcedColor)
-            drawLabeledRing(value: right, labelRect: NSRect(x: 50, y: 3.0, width: 12, height: 18), ringCenter: NSPoint(x: 74, y: 12), forcedColor: forcedColor)
+            drawLabeledRing(value: left, labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 28, y: 12), forcedColor: forcedColor)
+            drawLabeledRing(value: right, labelRect: NSRect(x: 51, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 74, y: 12), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -582,8 +582,8 @@ enum UsageBadgeRenderer {
             NSColor.labelColor.withAlphaComponent(0.28).setFill()
             divider.fill()
 
-            drawReadoutGroup(value: left, labelRect: NSRect(x: 0, y: 7.9, width: 13, height: 9), numberRect: NSRect(x: 14, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 1, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
-            drawReadoutGroup(value: right, labelRect: NSRect(x: 49, y: 7.9, width: 9, height: 9), numberRect: NSRect(x: 59, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 48, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
+            drawReadoutGroup(value: left, labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16), numberRect: NSRect(x: 15, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 1, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
+            drawReadoutGroup(value: right, labelRect: NSRect(x: 49, y: 4.0, width: 11, height: 16), numberRect: NSRect(x: 61, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 48, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
         }
 
         image.isTemplate = false
@@ -640,7 +640,7 @@ enum UsageBadgeRenderer {
         let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
         let emphasisAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.96
 
-        drawString(value.label, in: labelRect, fontSize: 6.6, weight: .semibold, alpha: 0.56, alignment: .left)
+        drawStackedLabel(value.label, in: labelRect, alpha: 0.62)
         drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 11.6 : 13.2, weight: .bold, alpha: emphasisAlpha, alignment: .left)
 
         let track = NSBezierPath(roundedRect: lineRect, xRadius: 0.7, yRadius: 0.7)
@@ -676,7 +676,31 @@ enum UsageBadgeRenderer {
     }
 
     private static func drawSideLabel(_ text: String, in rect: NSRect) {
-        drawString(text, in: rect, fontSize: text.count > 1 ? 7.2 : 9.2, weight: .semibold, alpha: 0.70, alignment: .center)
+        drawStackedLabel(text, in: rect, alpha: 0.78)
+    }
+
+    private static func drawStackedLabel(_ text: String, in rect: NSRect, alpha: CGFloat) {
+        let lines: [String]
+        if text.uppercased() == "5H" {
+            lines = ["5", "H"]
+        } else {
+            lines = [text.uppercased()]
+        }
+
+        let fontSize: CGFloat = lines.count > 1 ? 7.4 : 10.0
+        let lineHeight: CGFloat = lines.count > 1 ? 7.5 : 10.8
+        let totalHeight = CGFloat(lines.count) * lineHeight
+        let startY = rect.midY + totalHeight / 2 - lineHeight
+
+        for (index, line) in lines.enumerated() {
+            let lineRect = NSRect(
+                x: rect.minX,
+                y: startY - CGFloat(index) * lineHeight,
+                width: rect.width,
+                height: lineHeight
+            )
+            drawString(line, in: lineRect, fontSize: fontSize, weight: .bold, alpha: alpha, alignment: .center)
+        }
     }
 
     private static func drawString(

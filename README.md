@@ -2,6 +2,10 @@
 
 Small macOS menu-bar app for showing Codex usage at a glance.
 
+## v0.2.0 update
+
+This release adds a compact reset-time display and English localization. The new `Quota & Reset Times` style shows the precise reset point for both quota windows, with an automatically measured width for Chinese and English labels. This makes it easier to understand exactly when the 5-hour and weekly limits become available again.
+
 ![Codex Usage Status menu-bar badge](docs/assets/menu-bar-badge.png)
 
 It displays usage as a compact side-labeled double-ring badge:
@@ -14,6 +18,24 @@ It displays usage as a compact side-labeled double-ring badge:
 
 The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
 
+## Update: reset-time display
+
+This project update adds a `Quota & Reset Times` display style so you can see when each quota window resets, not only how much remains. It uses a compact two-line layout:
+
+```text
+72%·18:18
+43%·周日12:57
+```
+
+The format follows the Mac's current language. In English it becomes, for example:
+
+```text
+72%·18:18
+43%·Sun12:57
+```
+
+The badge width is measured from the current strings, so it stays as narrow as possible and expands only when a longer reset label such as `Tomorrow 00:13` is needed. Select it from the badge menu under `Display Style` > `Quota & Reset Times`.
+
 Double Ring is the default display style. It uses no capsule background, and each label sits beside its own ring instead of inside the ring. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5H` / `7D` labels and thin status lines.
 
 ## Safety model
@@ -25,7 +47,7 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 ## Requirements
 
 - macOS 13 or later
-- Codex desktop installed at `/Applications/Codex.app`
+- Codex desktop installed at `/Applications/Codex.app` or the current ChatGPT desktop app at `/Applications/ChatGPT.app`
 - You are already signed in to Codex
 
 ## Install from release
@@ -43,7 +65,7 @@ Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polis
 
 ## Known limitations
 
-- Codex desktop must be installed at `/Applications/Codex.app`, unless `CODEX_BIN` is set for development.
+- Codex desktop must be installed at `/Applications/Codex.app` or `/Applications/ChatGPT.app`, unless `CODEX_BIN` is set for development.
 - You must already be signed in to Codex.
 - Live usage depends on Codex's local app-server method `account/rateLimits/read`; if that local interface changes, this app may need an update.
 - The app shows usage only. It cannot buy credits, switch accounts, retry login, or change limits.
@@ -81,6 +103,7 @@ To change the menu-bar display, click the badge and choose Display Style:
 
 - Double Ring: compact default with side labels and circular quota indicators.
 - Large Readout: larger numbers with subtle status lines for easier reading.
+- Quota & Reset Times: two narrow lines showing each remaining percentage and its reset time; the weekday and relative day labels follow the Mac's current language.
 
 The default refresh interval is 120 seconds, with a 60-second minimum. To override it:
 

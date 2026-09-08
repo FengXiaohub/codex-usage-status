@@ -3,6 +3,7 @@ import Foundation
 enum BadgeStyle: String, CaseIterable {
     case doubleRing
     case largeReadout
+    case quotaAndResetTimes
 
     private static let defaultsKey = "BadgeStyle"
 
@@ -12,6 +13,8 @@ enum BadgeStyle: String, CaseIterable {
             return "Double Ring"
         case .largeReadout:
             return "Large Readout"
+        case .quotaAndResetTimes:
+            return "Quota & Reset Times"
         }
     }
 

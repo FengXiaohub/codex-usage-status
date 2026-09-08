@@ -6,11 +6,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
 
+    private let fiveHourExpiryItem = NSMenuItem(title: "5H -- · 读取中", action: nil, keyEquivalent: "")
+    private let weeklyExpiryItem = NSMenuItem(title: "7D -- · 读取中", action: nil, keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshFromMenu), keyEquivalent: "r")
     private let displayStyleItem = NSMenuItem(title: "Display Style", action: nil, keyEquivalent: "")
     private let displayStyleMenu = NSMenu()
     private let doubleRingItem = NSMenuItem(title: BadgeStyle.doubleRing.menuTitle, action: #selector(selectDoubleRingStyle), keyEquivalent: "")
     private let largeReadoutItem = NSMenuItem(title: BadgeStyle.largeReadout.menuTitle, action: #selector(selectLargeReadoutStyle), keyEquivalent: "")
+    private let quotaAndResetTimesItem = NSMenuItem(title: BadgeStyle.quotaAndResetTimes.menuTitle, action: #selector(selectQuotaAndResetTimesStyle), keyEquivalent: "")
     private let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
 
     private var timer: Timer?
@@ -21,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastRefreshDate: Date?
     private var lastError: Error?
 
+    private var usesChinese: Bool {
+        Locale.current.language.languageCode?.identifier == "zh"
+    }
+
     private lazy var dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -29,9 +36,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return formatter
     }()
 
+    private lazy var timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private lazy var weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: usesChinese ? "zh_CN" : "en_US_POSIX")
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+
+    private lazy var dateAndTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: usesChinese ? "zh_CN" : "en_US_POSIX")
+        formatter.dateFormat = usesChinese ? "M月d日 HH:mm" : "MMM d HH:mm"
+        return formatter
+    }()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
+
+        fiveHourExpiryItem.title = "5H -- · \(usesChinese ? "读取中" : "Loading")"
+        weeklyExpiryItem.title = "7D -- · \(usesChinese ? "读取中" : "Loading")"
 
         if let button = statusItem.button {
             button.title = ""
@@ -40,13 +71,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         renderCurrentBadge()
 
+        menu.addItem(fiveHourExpiryItem)
+        menu.addItem(weeklyExpiryItem)
+        menu.addItem(.separator())
+
         refreshItem.target = self
         menu.addItem(refreshItem)
 
         doubleRingItem.target = self
         largeReadoutItem.target = self
+        quotaAndResetTimesItem.target = self
         displayStyleMenu.addItem(doubleRingItem)
         displayStyleMenu.addItem(largeReadoutItem)
+        displayStyleMenu.addItem(quotaAndResetTimesItem)
         displayStyleItem.submenu = displayStyleMenu
         menu.addItem(displayStyleItem)
         updateStyleMenuState()
@@ -82,6 +119,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectLargeReadoutStyle() {
         setBadgeStyle(.largeReadout)
+    }
+
+    @objc private func selectQuotaAndResetTimesStyle() {
+        setBadgeStyle(.quotaAndResetTimes)
     }
 
     @objc private func showSettings() {
@@ -125,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStyleMenuState() {
         doubleRingItem.state = badgeStyle == .doubleRing ? .on : .off
         largeReadoutItem.state = badgeStyle == .largeReadout ? .on : .off
+        quotaAndResetTimesItem.state = badgeStyle == .quotaAndResetTimes ? .on : .off
     }
 
     private func refresh() {
@@ -167,29 +209,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastUsage = usage
         lastRefreshDate = Date()
         lastError = nil
+        updateExpiryItems(for: usage)
         renderCurrentBadge()
     }
 
     private func applyError(_ error: Error) {
         lastError = error
+        let failureText = usesChinese ? "读取失败" : "Unavailable"
+        fiveHourExpiryItem.title = "5H -- · \(failureText)"
+        weeklyExpiryItem.title = "7D -- · \(failureText)"
         renderCurrentBadge()
     }
 
-    private func renderCurrentBadge() {
-        statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
-        if let button = statusItem.button {
-            button.title = ""
+    private func updateExpiryItems(for usage: UsageSummary) {
+        fiveHourExpiryItem.title = "5H \(usage.fiveHour.remainingPercent)% · \(expiryText(for: usage.fiveHour.resetsAt))"
+        weeklyExpiryItem.title = "7D \(usage.weekly.remainingPercent)% · \(expiryText(for: usage.weekly.resetsAt))"
+    }
 
-            if let lastError {
-                button.image = UsageBadgeRenderer.errorImage(style: badgeStyle, appearance: button.effectiveAppearance)
-                button.toolTip = "Codex usage: \(lastError.localizedDescription)"
-            } else if let lastUsage {
-                button.image = UsageBadgeRenderer.image(for: lastUsage, style: badgeStyle, appearance: button.effectiveAppearance)
-                button.toolTip = lastUsage.tooltip(formatter: dateFormatter)
-            } else {
-                button.image = UsageBadgeRenderer.placeholderImage(style: badgeStyle, appearance: button.effectiveAppearance)
-                button.toolTip = "Codex usage: waiting for first refresh"
-            }
+    private func expiryText(for date: Date?) -> String {
+        guard let date else {
+            return "未知"
         }
+
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return timeFormatter.string(from: date)
+        }
+        if calendar.isDateInTomorrow(date) {
+            return usesChinese
+                ? "明天 \(timeFormatter.string(from: date))"
+                : "Tomorrow \(timeFormatter.string(from: date))"
+        }
+        if let nextWeek = calendar.date(byAdding: .day, value: 7, to: Date()), date < nextWeek {
+            return "\(weekdayFormatter.string(from: date)) \(timeFormatter.string(from: date))"
+        }
+        return dateAndTimeFormatter.string(from: date)
+    }
+
+    private func renderCurrentBadge() {
+        guard let button = statusItem.button else {
+            return
+        }
+
+        let image: NSImage
+        let tooltip: String
+        if let lastError {
+            image = UsageBadgeRenderer.errorImage(style: badgeStyle, appearance: button.effectiveAppearance)
+            tooltip = "Codex usage: \(lastError.localizedDescription)"
+        } else if let lastUsage {
+            image = UsageBadgeRenderer.image(for: lastUsage, style: badgeStyle, appearance: button.effectiveAppearance)
+            tooltip = lastUsage.tooltip(formatter: dateFormatter)
+        } else {
+            image = UsageBadgeRenderer.placeholderImage(style: badgeStyle, appearance: button.effectiveAppearance)
+            tooltip = "Codex usage: waiting for first refresh"
+        }
+
+        statusItem.length = badgeStyle == .quotaAndResetTimes
+            ? image.size.width
+            : UsageBadgeRenderer.statusItemLength(for: badgeStyle)
+        button.title = ""
+        button.image = image
+        button.toolTip = tooltip
     }
 }

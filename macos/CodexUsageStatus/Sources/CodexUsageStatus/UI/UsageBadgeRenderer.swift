@@ -3,6 +3,7 @@ import AppKit
 enum UsageBadgeRenderer {
     private static let doubleRingImageSize = NSSize(width: 86, height: 24)
     private static let largeReadoutImageSize = NSSize(width: 86, height: 24)
+    private static let quotaAndResetTimesImageHeight: CGFloat = 24
 
     static func statusItemLength(for style: BadgeStyle) -> CGFloat {
         switch style {
@@ -10,13 +11,15 @@ enum UsageBadgeRenderer {
             return 90
         case .largeReadout:
             return 90
+        case .quotaAndResetTimes:
+            return 1
         }
     }
 
     static func image(for usage: UsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         render(style: style,
-            left: BadgeValue(label: "5H", percent: usage.fiveHour.remainingPercent),
-            right: BadgeValue(label: "7D", percent: usage.weekly.remainingPercent),
+            left: BadgeValue(label: "5H", percent: usage.fiveHour.remainingPercent, resetDate: usage.fiveHour.resetsAt),
+            right: BadgeValue(label: "7D", percent: usage.weekly.remainingPercent, resetDate: usage.weekly.resetsAt),
             appearance: appearance
         )
     }
@@ -50,7 +53,79 @@ enum UsageBadgeRenderer {
             return renderDoubleRing(left: left, right: right, appearance: appearance, forcedColor: forcedColor)
         case .largeReadout:
             return renderLargeReadout(left: left, right: right, appearance: appearance, forcedColor: forcedColor)
+        case .quotaAndResetTimes:
+            return renderQuotaAndResetTimes(left: left, right: right, appearance: appearance, forcedColor: forcedColor)
         }
+    }
+
+    private static func renderQuotaAndResetTimes(
+        left: BadgeValue,
+        right: BadgeValue,
+        appearance: NSAppearance,
+        forcedColor: NSColor?
+    ) -> NSImage {
+        let leftPercent = left.percent.map { "\($0)%" } ?? left.centerText
+        let rightPercent = right.percent.map { "\($0)%" } ?? right.centerText
+        let fiveHourText = "\(leftPercent)·\(resetText(for: left.resetDate, includeWeekday: false))"
+        let weeklyText = "\(rightPercent)·\(resetText(for: right.resetDate, includeWeekday: true))"
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 10.2, weight: .semibold)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let width = ceil(max(
+            (fiveHourText as NSString).size(withAttributes: attributes).width,
+            (weeklyText as NSString).size(withAttributes: attributes).width
+        ) + 1)
+        let imageSize = NSSize(width: width, height: quotaAndResetTimesImageHeight)
+        let image = NSImage(size: imageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            drawString(
+                fiveHourText,
+                in: NSRect(x: 0, y: 12, width: imageSize.width, height: 11),
+                fontSize: 10.2,
+                weight: .semibold,
+                alpha: 0.98,
+                alignment: .left,
+                color: forcedColor
+            )
+            drawString(
+                weeklyText,
+                in: NSRect(x: 0, y: 1, width: imageSize.width, height: 11),
+                fontSize: 10.2,
+                weight: .semibold,
+                alpha: 0.98,
+                alignment: .left,
+                color: forcedColor
+            )
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func resetText(for date: Date?, includeWeekday: Bool) -> String {
+        guard let date else {
+            return "--"
+        }
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = Locale.current
+        timeFormatter.dateFormat = "HH:mm"
+        let time = timeFormatter.string(from: date)
+
+        if includeWeekday {
+            let weekdayFormatter = DateFormatter()
+            let usesChinese = Locale.current.language.languageCode?.identifier == "zh"
+            weekdayFormatter.locale = Locale(identifier: usesChinese ? "zh_CN" : "en_US_POSIX")
+            weekdayFormatter.dateFormat = "EEE"
+            return "\(weekdayFormatter.string(from: date))\(time)"
+        }
+
+        if Calendar.current.isDateInTomorrow(date) {
+            return Locale.current.language.languageCode?.identifier == "zh" ? "明天\(time)" : "Tomorrow \(time)"
+        }
+        return time
     }
 
     private static func renderDoubleRing(
@@ -231,7 +306,8 @@ enum UsageBadgeRenderer {
         fontSize: CGFloat,
         weight: NSFont.Weight,
         alpha: CGFloat,
-        alignment: NSTextAlignment
+        alignment: NSTextAlignment,
+        color: NSColor? = nil
     ) {
         let style = NSMutableParagraphStyle()
         style.alignment = alignment
@@ -239,7 +315,7 @@ enum UsageBadgeRenderer {
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight),
-            .foregroundColor: NSColor.labelColor.withAlphaComponent(alpha),
+            .foregroundColor: (color ?? NSColor.labelColor).withAlphaComponent(alpha),
             .paragraphStyle: style,
         ]
         text.draw(in: rect, withAttributes: attributes)
@@ -268,11 +344,13 @@ struct BadgeValue {
     let label: String
     let percent: Int?
     let overrideText: String?
+    let resetDate: Date?
 
-    init(label: String, percent: Int?, overrideText: String? = nil) {
+    init(label: String, percent: Int?, overrideText: String? = nil, resetDate: Date? = nil) {
         self.label = label
         self.percent = percent
         self.overrideText = overrideText
+        self.resetDate = resetDate
     }
 
     var centerText: String {

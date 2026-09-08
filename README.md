@@ -52,7 +52,7 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 
 ## Install from release
 
-1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/tollenceld/codex-usage-status/releases/latest):
+1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/Fong-ghub/codex-usage-status/releases/latest):
    - Apple Silicon: `CodexUsageStatus-<version>-macos-arm64.zip`
    - Intel: `CodexUsageStatus-<version>-macos-x86_64.zip`
 2. Unzip it.

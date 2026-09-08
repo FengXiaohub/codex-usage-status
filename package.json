@@ -1,0 +1,25 @@
+{
+  "name": "codex-usage-status",
+  "version": "0.2.0",
+  "description": "Read-only Codex usage status via the official local app-server.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "codex-usage-status": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --test",
+    "usage": "node ./src/cli.js",
+    "usage:json": "node ./src/cli.js --json",
+    "build:macos": "bash ./scripts/build-macos-app.sh",
+    "start:macos": "bash ./scripts/run-macos-app.sh",
+    "install:macos": "bash ./scripts/install-macos-app.sh",
+    "package:macos": "bash ./scripts/package-release.sh",
+    "package:macos:all": "bash ./scripts/package-all-macos.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

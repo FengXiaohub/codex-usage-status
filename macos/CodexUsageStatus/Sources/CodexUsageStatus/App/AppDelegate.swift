@@ -216,13 +216,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyError(_ error: Error) {
         lastError = error
         let failureText = usesChinese ? "读取失败" : "Unavailable"
+        fiveHourExpiryItem.isHidden = lastUsage?.fiveHour == nil
         fiveHourExpiryItem.title = "5H -- · \(failureText)"
         weeklyExpiryItem.title = "7D -- · \(failureText)"
         renderCurrentBadge()
     }
 
     private func updateExpiryItems(for usage: UsageSummary) {
-        fiveHourExpiryItem.title = "5H \(usage.fiveHour.remainingPercent)% · \(expiryText(for: usage.fiveHour.resetsAt))"
+        fiveHourExpiryItem.isHidden = usage.fiveHour == nil
+        if let fiveHour = usage.fiveHour {
+            fiveHourExpiryItem.title = "5H \(fiveHour.remainingPercent)% · \(expiryText(for: fiveHour.resetsAt))"
+        }
         weeklyExpiryItem.title = "7D \(usage.weekly.remainingPercent)% · \(expiryText(for: usage.weekly.resetsAt))"
     }
 
@@ -264,7 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             tooltip = "Codex usage: waiting for first refresh"
         }
 
-        statusItem.length = badgeStyle == .quotaAndResetTimes
+        statusItem.length = badgeStyle == .quotaAndResetTimes || (lastUsage?.fiveHour == nil && lastUsage != nil)
             ? image.size.width
             : UsageBadgeRenderer.statusItemLength(for: badgeStyle)
         button.title = ""

@@ -2,6 +2,16 @@
 
 Small macOS menu-bar app for showing Codex usage at a glance.
 
+## v0.3.0 update
+
+The badge now adapts automatically to the quota windows returned by Codex:
+
+- Plus-style accounts with 5-hour and weekly windows keep the two-line reset-time display.
+- Pro-style accounts that expose only the weekly window show one larger, centered line such as `43%·Sun12:57` (or `43%·周日12:57` in Chinese).
+- The 5H menu item and 5H visualization are hidden when no 5-hour window is available.
+
+There is no separate Pro download. The same build supports both account shapes and chooses the layout from the live rate-limit data.
+
 ## v0.2.0 update
 
 This release adds a compact reset-time display and English localization. The new `Quota & Reset Times` style shows the precise reset point for both quota windows, with an automatically measured width for Chinese and English labels. This makes it easier to understand exactly when the 5-hour and weekly limits become available again.
@@ -52,7 +62,7 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 
 ## Install from release
 
-1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/Fong-ghub/codex-usage-status/releases/latest):
+1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest):
    - Apple Silicon: `CodexUsageStatus-<version>-macos-arm64.zip`
    - Intel: `CodexUsageStatus-<version>-macos-x86_64.zip`
 2. Unzip it.
@@ -104,6 +114,8 @@ To change the menu-bar display, click the badge and choose Display Style:
 - Double Ring: compact default with side labels and circular quota indicators.
 - Large Readout: larger numbers with subtle status lines for easier reading.
 - Quota & Reset Times: two narrow lines showing each remaining percentage and its reset time; the weekday and relative day labels follow the Mac's current language.
+
+When Codex returns only a weekly window (for example, a Pro account), the same styles collapse to a single larger weekly readout automatically.
 
 The default refresh interval is 120 seconds, with a 60-second minimum. To override it:
 

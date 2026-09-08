@@ -20,7 +20,7 @@ struct RateLimitWindow: Decodable, Sendable {
 
 struct UsageSummary: Sendable {
     let planType: String?
-    let fiveHour: UsageWindow
+    let fiveHour: UsageWindow?
     let weekly: UsageWindow
 
     init(response: RateLimitsResponse) throws {
@@ -33,10 +33,10 @@ struct UsageSummary: Sendable {
         }
 
         let windows = [snapshot.primary, snapshot.secondary].compactMap { $0 }.map(UsageWindow.init)
-        let fiveHour = windows.first { approximately($0.windowDurationMins, 300) } ?? windows.first
-        let weekly = windows.first { approximately($0.windowDurationMins, 10080) } ?? windows.dropFirst().first
+        let fiveHour = windows.first { approximately($0.windowDurationMins, 300) }
+        let weekly = windows.first { approximately($0.windowDurationMins, 10080) } ?? windows.first
 
-        guard let fiveHour, let weekly else {
+        guard let weekly else {
             throw FetchError.invalidOutput
         }
 
@@ -46,17 +46,26 @@ struct UsageSummary: Sendable {
     }
 
     var menuTitle: String {
-        "5h \(fiveHour.remainingPercent)% 7d \(weekly.remainingPercent)%"
+        if let fiveHour {
+            return "5h \(fiveHour.remainingPercent)% 7d \(weekly.remainingPercent)%"
+        }
+        return "7d \(weekly.remainingPercent)%"
     }
 
     var verboseTitle: String {
-        "Codex usage: 5-hour \(fiveHour.remainingPercent)% · weekly \(weekly.remainingPercent)%"
+        if let fiveHour {
+            return "Codex usage: 5-hour \(fiveHour.remainingPercent)% · weekly \(weekly.remainingPercent)%"
+        }
+        return "Codex usage: weekly \(weekly.remainingPercent)%"
     }
 
     func tooltip(formatter: DateFormatter) -> String {
-        let fiveHourReset = fiveHour.resetsAt.map { formatter.string(from: $0) } ?? "unknown"
         let weeklyReset = weekly.resetsAt.map { formatter.string(from: $0) } ?? "unknown"
-        return "Codex usage\n5-hour remaining: \(fiveHour.remainingPercent)% · resets \(fiveHourReset)\nWeekly remaining: \(weekly.remainingPercent)% · resets \(weeklyReset)"
+        if let fiveHour {
+            let fiveHourReset = fiveHour.resetsAt.map { formatter.string(from: $0) } ?? "unknown"
+            return "Codex usage\n5-hour remaining: \(fiveHour.remainingPercent)% · resets \(fiveHourReset)\nWeekly remaining: \(weekly.remainingPercent)% · resets \(weeklyReset)"
+        }
+        return "Codex usage\nWeekly remaining: \(weekly.remainingPercent)% · resets \(weeklyReset)"
     }
 }
 

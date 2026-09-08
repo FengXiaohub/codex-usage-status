@@ -4,6 +4,9 @@ enum UsageBadgeRenderer {
     private static let doubleRingImageSize = NSSize(width: 86, height: 24)
     private static let largeReadoutImageSize = NSSize(width: 86, height: 24)
     private static let quotaAndResetTimesImageHeight: CGFloat = 24
+    private static let singleRingImageSize = NSSize(width: 46, height: 24)
+    private static let singleReadoutImageSize = NSSize(width: 58, height: 24)
+    private static let proQuotaAndResetTimesFontSize: CGFloat = 12.6
 
     static func statusItemLength(for style: BadgeStyle) -> CGFloat {
         switch style {
@@ -17,9 +20,21 @@ enum UsageBadgeRenderer {
     }
 
     static func image(for usage: UsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        render(style: style,
-            left: BadgeValue(label: "5H", percent: usage.fiveHour.remainingPercent, resetDate: usage.fiveHour.resetsAt),
-            right: BadgeValue(label: "7D", percent: usage.weekly.remainingPercent, resetDate: usage.weekly.resetsAt),
+        let weekly = BadgeValue(label: "7D", percent: usage.weekly.remainingPercent, resetDate: usage.weekly.resetsAt)
+        guard let fiveHour = usage.fiveHour else {
+            switch style {
+            case .doubleRing:
+                return renderSingleRing(value: weekly, appearance: appearance)
+            case .largeReadout:
+                return renderSingleReadout(value: weekly, appearance: appearance)
+            case .quotaAndResetTimes:
+                return renderProQuotaAndResetTimes(value: weekly, appearance: appearance)
+            }
+        }
+
+        return render(style: style,
+            left: BadgeValue(label: "5H", percent: fiveHour.remainingPercent, resetDate: fiveHour.resetsAt),
+            right: weekly,
             appearance: appearance
         )
     }
@@ -97,6 +112,76 @@ enum UsageBadgeRenderer {
                 alpha: 0.98,
                 alignment: .left,
                 color: forcedColor
+            )
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func renderProQuotaAndResetTimes(value: BadgeValue, appearance: NSAppearance) -> NSImage {
+        let percent = value.percent.map { "\($0)%" } ?? value.centerText
+        let text = "\(percent)·\(resetText(for: value.resetDate, includeWeekday: true))"
+        let font = NSFont.monospacedDigitSystemFont(ofSize: proQuotaAndResetTimesFontSize, weight: .semibold)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let width = ceil((text as NSString).size(withAttributes: attributes).width + 1)
+        let imageSize = NSSize(width: width, height: quotaAndResetTimesImageHeight)
+        let image = NSImage(size: imageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            drawString(
+                text,
+                in: NSRect(x: 0, y: 4, width: imageSize.width, height: 16),
+                fontSize: proQuotaAndResetTimesFontSize,
+                weight: .semibold,
+                alpha: 0.98,
+                alignment: .left
+            )
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func renderSingleRing(value: BadgeValue, appearance: NSAppearance) -> NSImage {
+        let image = NSImage(size: singleRingImageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            let rect = NSRect(origin: .zero, size: singleRingImageSize)
+            NSColor.clear.setFill()
+            rect.fill()
+            drawLabeledRing(
+                value: value,
+                labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16),
+                ringCenter: NSPoint(x: 32, y: 12),
+                forcedColor: nil
+            )
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func renderSingleReadout(value: BadgeValue, appearance: NSAppearance) -> NSImage {
+        let image = NSImage(size: singleReadoutImageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            let rect = NSRect(origin: .zero, size: singleReadoutImageSize)
+            NSColor.clear.setFill()
+            rect.fill()
+            drawReadoutGroup(
+                value: value,
+                labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16),
+                numberRect: NSRect(x: 15, y: 2.2, width: 42, height: 19),
+                lineRect: NSRect(x: 1, y: 2.4, width: 56, height: 1.5),
+                forcedColor: nil,
+                numberFontSize: 15
             )
         }
 
@@ -230,14 +315,16 @@ enum UsageBadgeRenderer {
         labelRect: NSRect,
         numberRect: NSRect,
         lineRect: NSRect,
-        forcedColor: NSColor?
+        forcedColor: NSColor?,
+        numberFontSize: CGFloat? = nil
     ) {
         let percent = value.percent.map { max(0, min(100, $0)) }
         let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
         let emphasisAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.96
 
         drawStackedLabel(value.label, in: labelRect, alpha: 0.62)
-        drawString(value.centerText, in: numberRect, fontSize: value.centerText.count >= 3 ? 11.6 : 13.2, weight: .bold, alpha: emphasisAlpha, alignment: .left)
+        let fontSize = numberFontSize ?? (value.centerText.count >= 3 ? 11.6 : 13.2)
+        drawString(value.centerText, in: numberRect, fontSize: fontSize, weight: .bold, alpha: emphasisAlpha, alignment: .left)
 
         let track = NSBezierPath(roundedRect: lineRect, xRadius: 0.7, yRadius: 0.7)
         NSColor.labelColor.withAlphaComponent(0.14).setFill()

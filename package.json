@@ -1,6 +1,6 @@
 {
   "name": "codex-usage-status",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read-only Codex usage status via the official local app-server.",
   "type": "module",
   "private": true,

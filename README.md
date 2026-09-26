@@ -2,6 +2,10 @@
 
 Small macOS menu-bar app for showing Codex usage at a glance.
 
+## v0.3.2 update
+
+The macOS app now supports the current ChatGPT desktop bundle, where Codex is packaged at `Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`. Older ChatGPT and standalone Codex paths remain supported.
+
 ## v0.3.1 update
 
 The macOS app now detects the Codex executable in both the current ChatGPT desktop app and the legacy standalone Codex app. This fixes the red `?` state that appeared when only `/Applications/ChatGPT.app` was installed.

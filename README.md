@@ -1,72 +1,88 @@
-# Codex Usage Status
+# Codex & Antigravity Usage Status
 
-Small macOS menu-bar app for showing Codex usage at a glance.
+**[English](README.md) | [简体中文](README.zh-CN.md)**
 
-## v0.3.2 update
+Small, privacy-first macOS menu-bar app for showing **OpenAI Codex** and **Google Antigravity** (Gemini Models & Claude/GPT Models) usage quotas at a glance.
 
-The macOS app now supports the current ChatGPT desktop bundle, where Codex is packaged at `Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`. Older ChatGPT and standalone Codex paths remain supported.
+---
 
-## v0.3.1 update
+## v0.4.0 update: 3-column horizontal Codex + Antigravity display
 
-The macOS app now detects the Codex executable in both the current ChatGPT desktop app and the legacy standalone Codex app. This fixes the red `?` state that appeared when only `/Applications/ChatGPT.app` was installed.
+The menu-bar badge now combines **three quota groups** side-by-side in a single compact `NSStatusItem`:
 
-## v0.3.0 update
+- **`C` (Codex)**: 5-hour and weekly quota windows from the local Codex app-server (`/Applications/ChatGPT.app` or `/Applications/Codex.app`).
+- **`G` (Antigravity Gemini Models)**: 5-hour and weekly quota windows for the Gemini model group (`Gemini 4 Neon / Carbon / Argon / Hydrogen`, `Orchestrator`, `Gemini 3.8 Flash`).
+- **`A` (Antigravity Claude & GPT Models)**: 5-hour and weekly quota windows for the Antigravity third-party model group (`Claude Opus / Sonnet`, `GPT-OSS`).
 
-The badge now adapts automatically to the quota windows returned by Codex:
+### Default display layout (`Quota & Reset Times`)
+
+By default, the menu bar uses the `Quota & Reset Times` style arranged horizontally across three columns (`C | G | A`), with a bold single-letter label on the left of each two-line column:
+
+```text
+C 88%·21:05      | G 83%·明天00:55  | A 100%·明天01:28
+  0%·周三15:32   |   91%·12月1日    |   100%·12月1日
+```
+
+In English locales:
+
+```text
+C 88%·21:05      | G 83%·Tomorrow 00:55 | A 100%·Tomorrow 01:28
+  0%·Wed15:32    |   91%·Dec 1 14:55    |   100%·Dec 1 20:28
+```
+
+- **Top row**: 5-hour (`5H`) remaining percentage and reset time.
+- **Bottom row**: Weekly (`7D`) remaining percentage and reset time.
+- **Graceful partial availability**: Codex and Antigravity are queried concurrently. If one tool is not installed or unavailable, the remaining columns still render normally.
+- **Three switchable styles**: You can switch between `Quota & Reset Times` (default), `Double Ring`, and `Large Readout` from the menu bar under `Display Style`.
+
+---
+
+## Previous updates
+
+### v0.3.2 update
+
+The macOS app supports the current ChatGPT desktop bundle, where Codex is packaged at `Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`. Older ChatGPT and standalone Codex paths remain supported.
+
+### v0.3.1 update
+
+The macOS app detects the Codex executable in both the current ChatGPT desktop app and the legacy standalone Codex app. This fixes the red `?` state that appeared when only `/Applications/ChatGPT.app` was installed.
+
+### v0.3.0 update
+
+The badge adapts automatically to the quota windows returned by Codex:
 
 - Plus-style accounts with 5-hour and weekly windows keep the two-line reset-time display.
 - Pro-style accounts that expose only the weekly window show one larger, centered line such as `43%·Sun12:57` (or `43%·周日12:57` in Chinese).
 - The 5H menu item and 5H visualization are hidden when no 5-hour window is available.
 
-There is no separate Pro download. The same build supports both account shapes and chooses the layout from the live rate-limit data.
+### v0.2.0 update
 
-## v0.2.0 update
-
-This release adds a compact reset-time display and English localization. The new `Quota & Reset Times` style shows the precise reset point for both quota windows, with an automatically measured width for Chinese and English labels. This makes it easier to understand exactly when the 5-hour and weekly limits become available again.
+Added the compact `Quota & Reset Times` display style and English/Chinese localization.
 
 ![Codex Usage Status menu-bar badge](docs/assets/menu-bar-badge.png)
 
-It displays usage as a compact side-labeled double-ring badge:
-
-- left ring group: 5-hour remaining percentage
-- right ring group: weekly remaining percentage
-- ring progress: remaining quota status
-- ring center number: remaining percentage
-- side labels: `5H` and `7D`
-
-The menu-bar badge is the primary interface. Clicking it only exposes the necessary actions: Refresh, Settings, and Quit.
-
-## Update: reset-time display
-
-This project update adds a `Quota & Reset Times` display style so you can see when each quota window resets, not only how much remains. It uses a compact two-line layout:
-
-```text
-72%·18:18
-43%·周日12:57
-```
-
-The format follows the Mac's current language. In English it becomes, for example:
-
-```text
-72%·18:18
-43%·Sun12:57
-```
-
-The badge width is measured from the current strings, so it stays as narrow as possible and expands only when a longer reset label such as `Tomorrow 00:13` is needed. Select it from the badge menu under `Display Style` > `Quota & Reset Times`.
-
-Double Ring is the default display style. It uses no capsule background, and each label sits beside its own ring instead of inside the ring. A larger accessibility-oriented style is available from Display Style > Large Readout. Large Readout keeps the same two values visible in the menu bar, but prioritizes even larger readable numbers with weak `5H` / `7D` labels and thin status lines.
+---
 
 ## Safety model
 
-This app only calls the official local Codex app-server method `account/rateLimits/read`. It does not modify Codex, does not read `~/.codex/auth.json`, and does not handle tokens, cookies, sessions, OAuth credentials, API keys, or browser data.
+This app strictly respects local credential boundaries:
+
+- **Codex**: Only calls the official local Codex app-server method `account/rateLimits/read`.
+- **Antigravity**: Only invokes the official local Antigravity CLI command `agy -p "/usage" --output-format json`.
+- It **does not** modify Codex or Antigravity, **does not** read `~/.codex/auth.json` or Antigravity credential stores, and **does not** handle tokens, cookies, sessions, OAuth credentials, API keys, or browser data.
 
 See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.md](SECURITY.md) for the hard engineering boundaries.
+
+---
 
 ## Requirements
 
 - macOS 13 or later
-- Codex desktop installed at `/Applications/Codex.app` or the current ChatGPT desktop app at `/Applications/ChatGPT.app`
-- You are already signed in to Codex
+- At least one of the following installed and signed in:
+  - **Codex**: `/Applications/ChatGPT.app` or `/Applications/Codex.app` (override with `CODEX_BIN`)
+  - **Antigravity CLI**: `~/.local/bin/agy`, `/usr/local/bin/agy`, or `/opt/homebrew/bin/agy` (override with `AGY_BIN`)
+
+---
 
 ## Install from release
 
@@ -81,13 +97,16 @@ The app is a menu-bar-only app, so it does not appear in the Dock. Optional: add
 
 Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polished release, sign with an Apple Developer ID and notarize the app.
 
+---
+
 ## Known limitations
 
-- Codex desktop must be installed at `/Applications/Codex.app` or `/Applications/ChatGPT.app`, unless `CODEX_BIN` is set for development.
-- You must already be signed in to Codex.
-- Live usage depends on Codex's local app-server method `account/rateLimits/read`; if that local interface changes, this app may need an update.
+- Codex desktop must be installed at `/Applications/ChatGPT.app` or `/Applications/Codex.app` (unless `CODEX_BIN` is set), and Antigravity CLI must be installed at `~/.local/bin/agy`, `/usr/local/bin/agy`, or `/opt/homebrew/bin/agy` (unless `AGY_BIN` is set).
+- You must already be signed in to the respective CLI/app.
+- Live usage depends on Codex's local app-server method `account/rateLimits/read` and Antigravity's `agy -p "/usage" --output-format json`.
 - The app shows usage only. It cannot buy credits, switch accounts, retry login, or change limits.
-- Local builds are ad-hoc signed by default. Downloaded release ZIPs may show Gatekeeper warnings until a notarized build is available.
+
+---
 
 ## Build from source
 
@@ -115,15 +134,11 @@ To install into `/Applications`:
 npm run install:macos
 ```
 
-The app is a menu-bar-only app, so it does not appear in the Dock.
+To change the menu-bar display, click the badge and choose `Display Style`:
 
-To change the menu-bar display, click the badge and choose Display Style:
-
-- Double Ring: compact default with side labels and circular quota indicators.
-- Large Readout: larger numbers with subtle status lines for easier reading.
-- Quota & Reset Times: two narrow lines showing each remaining percentage and its reset time; the weekday and relative day labels follow the Mac's current language.
-
-When Codex returns only a weekly window (for example, a Pro account), the same styles collapse to a single larger weekly readout automatically.
+- **Quota & Reset Times** (Default): three horizontal columns (`C`, `G`, `A`), each showing two narrow lines for the 5-hour and weekly remaining percentages and reset times.
+- **Double Ring**: compact circular quota indicators with side labels for each column.
+- **Large Readout**: larger numbers with subtle status progress lines under each value.
 
 The default refresh interval is 120 seconds, with a 60-second minimum. To override it:
 
@@ -131,22 +146,31 @@ The default refresh interval is 120 seconds, with a 60-second minimum. To overri
 CODEX_USAGE_REFRESH_SECONDS=180 npm run start:macos
 ```
 
+---
+
 ## CLI probe
 
-The CLI uses the same safe app-server source and is useful for debugging:
+The Node.js CLI probe queries both Codex and Antigravity in parallel using the same safe local commands:
 
 ```sh
 npm run usage
 npm run usage:json
 ```
 
-The CLI output remains text-based for logs and tests even though the macOS menu-bar UI is a graphic badge.
-
-If your Codex binary lives somewhere else:
+You can also run the native macOS binary in single-shot diagnostic mode:
 
 ```sh
-CODEX_BIN=/path/to/codex npm run usage
+./dist/CodexUsageStatus.app/Contents/MacOS/CodexUsageStatus --once
+# Example output: C 5h 88% 7d 0% | G 5h 83% 7d 91% | A 5h 100% 7d 100%
 ```
+
+If your binaries live in custom paths:
+
+```sh
+CODEX_BIN=/path/to/codex AGY_BIN=/path/to/agy npm run usage
+```
+
+---
 
 ## Release package
 
@@ -157,22 +181,17 @@ npm run package:macos:all
 
 `package:macos` creates a zipped `.app` for the current Mac architecture. `package:macos:all` creates both `arm64` and `x86_64` ZIPs plus `SHA256SUMS.txt` in `dist/`.
 
-Release ZIPs are architecture-specific:
-
-- `CodexUsageStatus-<version>-macos-arm64.zip` for Apple Silicon Macs.
-- `CodexUsageStatus-<version>-macos-x86_64.zip` for Intel Macs.
-
-For another MacBook, the most reliable source-build path is to clone the repository on that Mac and run `npm run install:macos`; it will build the correct native architecture there.
+---
 
 ## Repository layout
 
 - `macos/CodexUsageStatus/`: native AppKit menu-bar app.
   - `App/`: status item lifecycle, menu actions, refresh scheduling, and configuration.
-  - `Codex/`: local Codex app-server JSON-RPC client.
-  - `Domain/`: rate-limit response models and usage normalization.
-  - `UI/`: badge styles and AppKit drawing code.
+  - `Codex/`: concurrent local Codex `app-server` JSON-RPC client and Antigravity `agy` CLI runner.
+  - `Domain/`: rate-limit response models, Antigravity quota models, and 3-column usage normalization.
+  - `UI/`: 3-column horizontal badge styles and AppKit drawing code.
 - `src/`: Node CLI probe for diagnostics and tests.
-- `test/`: Node tests for response normalization and sensitive-output redaction.
+- `test/`: Node tests for Codex & Antigravity response normalization and sensitive-output redaction.
 - `scripts/`: build, run, install, and release packaging scripts.
 - `.github/workflows/`: CI and release artifact workflows.
 - `docs/`: architecture, structure, release, and upstream integration notes.

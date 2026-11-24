@@ -7,6 +7,13 @@ enum AppConfig {
         "/Applications/ChatGPT.app/Contents/Resources/codex",
         "/Applications/Codex.app/Contents/Resources/codex",
     ]
+    static var defaultAgyPaths: [String] {
+        [
+            NSHomeDirectory() + "/.local/bin/agy",
+            "/usr/local/bin/agy",
+            "/opt/homebrew/bin/agy",
+        ]
+    }
     static let minimumRefreshInterval: TimeInterval = 60
     static let defaultRefreshInterval: TimeInterval = 120
     static let errorRetryInterval: TimeInterval = 300

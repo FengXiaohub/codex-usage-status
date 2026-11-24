@@ -21,7 +21,7 @@ enum BadgeStyle: String, CaseIterable {
     static func load() -> BadgeStyle {
         guard let rawValue = UserDefaults.standard.string(forKey: defaultsKey),
               let style = BadgeStyle(rawValue: rawValue) else {
-            return .doubleRing
+            return .quotaAndResetTimes
         }
         return style
     }

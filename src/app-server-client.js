@@ -1,12 +1,42 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { accessSync, constants } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const DEFAULT_CODEX_BIN = "/Applications/Codex.app/Contents/Resources/codex";
+const DEFAULT_CODEX_PATHS = [
+  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+  "/Applications/ChatGPT.app/Contents/Resources/codex",
+  "/Applications/Codex.app/Contents/Resources/codex",
+];
+
+const DEFAULT_AGY_PATHS = [
+  join(homedir(), ".local/bin/agy"),
+  "/usr/local/bin/agy",
+  "/opt/homebrew/bin/agy",
+];
+
 const DEFAULT_TIMEOUT_MS = 20_000;
+
+function resolveExecutable(envValue, candidates) {
+  if (envValue) {
+    return envValue;
+  }
+  for (const candidate of candidates) {
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // continue
+    }
+  }
+  return candidates[0];
+}
 
 export class AppServerClient {
   constructor(options = {}) {
-    this.codexBin = options.codexBin ?? process.env.CODEX_BIN ?? DEFAULT_CODEX_BIN;
+    this.codexBin = resolveExecutable(options.codexBin ?? process.env.CODEX_BIN, DEFAULT_CODEX_PATHS);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.nextId = 1;
     this.pending = new Map();
@@ -143,6 +173,39 @@ export async function readCodexRateLimits(options = {}) {
   } finally {
     await client.close();
   }
+}
+
+export async function readAntigravityQuota(options = {}) {
+  const agyBin = resolveExecutable(options.agyBin ?? process.env.AGY_BIN, DEFAULT_AGY_PATHS);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      agyBin,
+      ["-p", "/usage", "--output-format", "json"],
+      { timeout: timeoutMs, maxBuffer: 2 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          const safeStderr = redactSensitive(String(stderr ?? "")).slice(-1000);
+          reject(new Error(`Antigravity CLI failed: ${error.message} ${safeStderr}`.trim()));
+          return;
+        }
+        try {
+          const lines = String(stdout)
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+          const jsonLine = lines.reverse().find((line) => line.startsWith("{") && line.endsWith("}"));
+          if (!jsonLine) {
+            throw new Error("No JSON payload returned by agy /usage.");
+          }
+          resolve(JSON.parse(jsonLine));
+        } catch (parseError) {
+          reject(parseError);
+        }
+      },
+    );
+  });
 }
 
 export function redactSensitive(value) {

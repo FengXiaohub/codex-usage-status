@@ -6,8 +6,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
 
-    private let fiveHourExpiryItem = NSMenuItem(title: "5H -- · 读取中", action: nil, keyEquivalent: "")
-    private let weeklyExpiryItem = NSMenuItem(title: "7D -- · 读取中", action: nil, keyEquivalent: "")
+    private let codexFiveHourItem = NSMenuItem(title: "[C] Codex 5H -- · 读取中", action: nil, keyEquivalent: "")
+    private let codexWeeklyItem = NSMenuItem(title: "[C] Codex 7D -- · 读取中", action: nil, keyEquivalent: "")
+    private let geminiFiveHourItem = NSMenuItem(title: "[G] Gemini 5H -- · 读取中", action: nil, keyEquivalent: "")
+    private let geminiWeeklyItem = NSMenuItem(title: "[G] Gemini 7D -- · 读取中", action: nil, keyEquivalent: "")
+    private let claudeGptFiveHourItem = NSMenuItem(title: "[A] Claude & GPT 5H -- · 读取中", action: nil, keyEquivalent: "")
+    private let claudeGptWeeklyItem = NSMenuItem(title: "[A] Claude & GPT 7D -- · 读取中", action: nil, keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshFromMenu), keyEquivalent: "r")
     private let displayStyleItem = NSMenuItem(title: "Display Style", action: nil, keyEquivalent: "")
     private let displayStyleMenu = NSMenu()
@@ -20,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isRefreshing = false
     private let refreshInterval = configuredRefreshInterval()
     private var badgeStyle = BadgeStyle.load()
-    private var lastUsage: UsageSummary?
+    private var lastUsage: CombinedUsageSummary?
     private var lastRefreshDate: Date?
     private var lastError: Error?
 
@@ -59,20 +63,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        statusItem.length = UsageBadgeRenderer.statusItemLength(for: badgeStyle)
 
-        fiveHourExpiryItem.title = "5H -- · \(usesChinese ? "读取中" : "Loading")"
-        weeklyExpiryItem.title = "7D -- · \(usesChinese ? "读取中" : "Loading")"
+        let loadingText = usesChinese ? "读取中" : "Loading"
+        codexFiveHourItem.title = "[C] Codex 5H -- · \(loadingText)"
+        codexWeeklyItem.title = "[C] Codex 7D -- · \(loadingText)"
+        geminiFiveHourItem.title = "[G] Gemini 5H -- · \(loadingText)"
+        geminiWeeklyItem.title = "[G] Gemini 7D -- · \(loadingText)"
+        claudeGptFiveHourItem.title = "[A] Claude & GPT 5H -- · \(loadingText)"
+        claudeGptWeeklyItem.title = "[A] Claude & GPT 7D -- · \(loadingText)"
 
         if let button = statusItem.button {
             button.title = ""
             button.imagePosition = .imageOnly
-            button.toolTip = "Codex usage: waiting for first refresh"
+            button.toolTip = "Codex & Antigravity usage: waiting for first refresh"
         }
         renderCurrentBadge()
 
-        menu.addItem(fiveHourExpiryItem)
-        menu.addItem(weeklyExpiryItem)
+        menu.addItem(codexFiveHourItem)
+        menu.addItem(codexWeeklyItem)
+        menu.addItem(.separator())
+        menu.addItem(geminiFiveHourItem)
+        menu.addItem(geminiWeeklyItem)
+        menu.addItem(.separator())
+        menu.addItem(claudeGptFiveHourItem)
+        menu.addItem(claudeGptWeeklyItem)
         menu.addItem(.separator())
 
         refreshItem.target = self
@@ -143,11 +157,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Refresh interval: \(Int(refreshInterval)) seconds
         Failure retry: \(Int(AppConfig.errorRetryInterval)) seconds
         Last refresh: \(lastRefresh)
-        Data source: local Codex app-server
+        Data sources: local Codex app-server & Antigravity CLI (agy /usage)
         """
 
         let alert = NSAlert()
-        alert.messageText = "Codex Usage Status"
+        alert.messageText = "Codex & Antigravity Usage Status"
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -184,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             do {
-                let usage = try await CodexUsageFetcher.fetch()
+                let usage = try await CodexUsageFetcher.fetchCombined()
                 self.isRefreshing = false
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
@@ -205,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(timeInterval: seconds, target: self, selector: #selector(timerDidFire), userInfo: nil, repeats: false)
     }
 
-    private func applyUsage(_ usage: UsageSummary) {
+    private func applyUsage(_ usage: CombinedUsageSummary) {
         lastUsage = usage
         lastRefreshDate = Date()
         lastError = nil
@@ -216,18 +230,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyError(_ error: Error) {
         lastError = error
         let failureText = usesChinese ? "读取失败" : "Unavailable"
-        fiveHourExpiryItem.isHidden = lastUsage?.fiveHour == nil
-        fiveHourExpiryItem.title = "5H -- · \(failureText)"
-        weeklyExpiryItem.title = "7D -- · \(failureText)"
+        codexFiveHourItem.isHidden = false
+        codexFiveHourItem.title = "[C] Codex 5H -- · \(failureText)"
+        codexWeeklyItem.title = "[C] Codex 7D -- · \(failureText)"
+        geminiFiveHourItem.isHidden = false
+        geminiFiveHourItem.title = "[G] Gemini 5H -- · \(failureText)"
+        geminiWeeklyItem.title = "[G] Gemini 7D -- · \(failureText)"
+        claudeGptFiveHourItem.isHidden = false
+        claudeGptFiveHourItem.title = "[A] Claude & GPT 5H -- · \(failureText)"
+        claudeGptWeeklyItem.title = "[A] Claude & GPT 7D -- · \(failureText)"
         renderCurrentBadge()
     }
 
-    private func updateExpiryItems(for usage: UsageSummary) {
-        fiveHourExpiryItem.isHidden = usage.fiveHour == nil
-        if let fiveHour = usage.fiveHour {
-            fiveHourExpiryItem.title = "5H \(fiveHour.remainingPercent)% · \(expiryText(for: fiveHour.resetsAt))"
+    private func updateExpiryItems(for usage: CombinedUsageSummary) {
+        updateGroupMenuItems(
+            prefix: "[C] Codex",
+            summary: usage.codex,
+            fiveHourItem: codexFiveHourItem,
+            weeklyItem: codexWeeklyItem
+        )
+        updateGroupMenuItems(
+            prefix: "[G] Gemini",
+            summary: usage.gemini,
+            fiveHourItem: geminiFiveHourItem,
+            weeklyItem: geminiWeeklyItem
+        )
+        updateGroupMenuItems(
+            prefix: "[A] Claude & GPT",
+            summary: usage.claudeGpt,
+            fiveHourItem: claudeGptFiveHourItem,
+            weeklyItem: claudeGptWeeklyItem
+        )
+    }
+
+    private func updateGroupMenuItems(
+        prefix: String,
+        summary: UsageSummary?,
+        fiveHourItem: NSMenuItem,
+        weeklyItem: NSMenuItem
+    ) {
+        guard let summary else {
+            let failureText = usesChinese ? "读取失败" : "Unavailable"
+            fiveHourItem.isHidden = false
+            fiveHourItem.title = "\(prefix) 5H -- · \(failureText)"
+            weeklyItem.title = "\(prefix) 7D -- · \(failureText)"
+            return
         }
-        weeklyExpiryItem.title = "7D \(usage.weekly.remainingPercent)% · \(expiryText(for: usage.weekly.resetsAt))"
+
+        fiveHourItem.isHidden = summary.fiveHour == nil
+        if let fiveHour = summary.fiveHour {
+            fiveHourItem.title = "\(prefix) 5H \(fiveHour.remainingPercent)% · \(expiryText(for: fiveHour.resetsAt))"
+        }
+        weeklyItem.title = "\(prefix) 7D \(summary.weekly.remainingPercent)% · \(expiryText(for: summary.weekly.resetsAt))"
     }
 
     private func expiryText(for date: Date?) -> String {
@@ -259,18 +313,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let tooltip: String
         if let lastError {
             image = UsageBadgeRenderer.errorImage(style: badgeStyle, appearance: button.effectiveAppearance)
-            tooltip = "Codex usage: \(lastError.localizedDescription)"
+            tooltip = "Codex & Antigravity usage: \(lastError.localizedDescription)"
         } else if let lastUsage {
             image = UsageBadgeRenderer.image(for: lastUsage, style: badgeStyle, appearance: button.effectiveAppearance)
             tooltip = lastUsage.tooltip(formatter: dateFormatter)
         } else {
             image = UsageBadgeRenderer.placeholderImage(style: badgeStyle, appearance: button.effectiveAppearance)
-            tooltip = "Codex usage: waiting for first refresh"
+            tooltip = "Codex & Antigravity usage: waiting for first refresh"
         }
 
-        statusItem.length = badgeStyle == .quotaAndResetTimes || (lastUsage?.fiveHour == nil && lastUsage != nil)
-            ? image.size.width
-            : UsageBadgeRenderer.statusItemLength(for: badgeStyle)
+        statusItem.length = image.size.width
         button.title = ""
         button.image = image
         button.toolTip = tooltip

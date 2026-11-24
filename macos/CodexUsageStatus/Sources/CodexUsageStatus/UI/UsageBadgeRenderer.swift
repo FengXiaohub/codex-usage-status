@@ -19,17 +19,69 @@ enum UsageBadgeRenderer {
         }
     }
 
-    static func image(for usage: UsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
+    static func image(for combined: CombinedUsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
+        let columnImages = combined.columns.map { column -> NSImage in
+            if let fiveHour = column.fiveHour, let weekly = column.weekly {
+                let summary = UsageSummary(
+                    shortLabel: column.shortLabel,
+                    title: column.title,
+                    planType: nil,
+                    fiveHour: fiveHour,
+                    weekly: weekly
+                )
+                return image(for: summary, prefix: column.shortLabel, style: style, appearance: appearance)
+            } else if let weekly = column.weekly {
+                let summary = UsageSummary(
+                    shortLabel: column.shortLabel,
+                    title: column.title,
+                    planType: nil,
+                    fiveHour: nil,
+                    weekly: weekly
+                )
+                return image(for: summary, prefix: column.shortLabel, style: style, appearance: appearance)
+            } else {
+                let override = column.errorDescription != nil ? "?" : "--"
+                let forcedColor: NSColor? = column.errorDescription != nil ? .systemRed : nil
+                return renderPrefixedColumn(
+                    prefix: column.shortLabel,
+                    style: style,
+                    left: BadgeValue(label: "5H", percent: nil, overrideText: override),
+                    right: BadgeValue(label: "7D", percent: nil, overrideText: override),
+                    appearance: appearance,
+                    forcedColor: forcedColor
+                )
+            }
+        }
+        return combineColumnsHorizontally(columnImages, appearance: appearance)
+    }
+
+    static func image(for usage: UsageSummary, prefix: String? = nil, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
         let weekly = BadgeValue(label: "7D", percent: usage.weekly.remainingPercent, resetDate: usage.weekly.resetsAt)
         guard let fiveHour = usage.fiveHour else {
+            let base: NSImage
             switch style {
             case .doubleRing:
-                return renderSingleRing(value: weekly, appearance: appearance)
+                base = renderSingleRing(value: weekly, appearance: appearance)
             case .largeReadout:
-                return renderSingleReadout(value: weekly, appearance: appearance)
+                base = renderSingleReadout(value: weekly, appearance: appearance)
             case .quotaAndResetTimes:
-                return renderProQuotaAndResetTimes(value: weekly, appearance: appearance)
+                base = renderProQuotaAndResetTimes(value: weekly, appearance: appearance)
             }
+            if let prefix {
+                return prependPrefixLabel(prefix, to: base, appearance: appearance, forcedColor: nil)
+            }
+            return base
+        }
+
+        if let prefix {
+            return renderPrefixedColumn(
+                prefix: prefix,
+                style: style,
+                left: BadgeValue(label: "5H", percent: fiveHour.remainingPercent, resetDate: fiveHour.resetsAt),
+                right: weekly,
+                appearance: appearance,
+                forcedColor: nil
+            )
         }
 
         return render(style: style,
@@ -40,20 +92,131 @@ enum UsageBadgeRenderer {
     }
 
     static func placeholderImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        render(style: style,
-            left: BadgeValue(label: "5H", percent: nil),
-            right: BadgeValue(label: "7D", percent: nil),
-            appearance: appearance
-        )
+        let columns = ["C", "G", "A"].map { prefix in
+            renderPrefixedColumn(
+                prefix: prefix,
+                style: style,
+                left: BadgeValue(label: "5H", percent: nil),
+                right: BadgeValue(label: "7D", percent: nil),
+                appearance: appearance,
+                forcedColor: nil
+            )
+        }
+        return combineColumnsHorizontally(columns, appearance: appearance)
     }
 
     static func errorImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        render(style: style,
-            left: BadgeValue(label: "5H", percent: nil, overrideText: "?"),
-            right: BadgeValue(label: "7D", percent: nil, overrideText: "?"),
+        let columns = ["C", "G", "A"].map { prefix in
+            renderPrefixedColumn(
+                prefix: prefix,
+                style: style,
+                left: BadgeValue(label: "5H", percent: nil, overrideText: "?"),
+                right: BadgeValue(label: "7D", percent: nil, overrideText: "?"),
+                appearance: appearance,
+                forcedColor: .systemRed
+            )
+        }
+        return combineColumnsHorizontally(columns, appearance: appearance)
+    }
+
+    private static func renderPrefixedColumn(
+        prefix: String,
+        style: BadgeStyle,
+        left: BadgeValue,
+        right: BadgeValue,
+        appearance: NSAppearance,
+        forcedColor: NSColor?
+    ) -> NSImage {
+        let contentImage = render(
+            style: style,
+            left: left,
+            right: right,
             appearance: appearance,
-            forcedColor: .systemRed
+            forcedColor: forcedColor
         )
+        return prependPrefixLabel(prefix, to: contentImage, appearance: appearance, forcedColor: forcedColor)
+    }
+
+    private static func prependPrefixLabel(
+        _ prefix: String,
+        to contentImage: NSImage,
+        appearance: NSAppearance,
+        forcedColor: NSColor?
+    ) -> NSImage {
+        let prefixWidth: CGFloat = 11
+        let prefixGap: CGFloat = 2
+        let totalSize = NSSize(
+            width: prefixWidth + prefixGap + contentImage.size.width,
+            height: contentImage.size.height
+        )
+        let image = NSImage(size: totalSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            drawString(
+                prefix,
+                in: NSRect(x: 0, y: 4.5, width: prefixWidth, height: 15),
+                fontSize: 11.5,
+                weight: .heavy,
+                alpha: 0.85,
+                alignment: .center,
+                color: forcedColor
+            )
+            contentImage.draw(
+                in: NSRect(
+                    x: prefixWidth + prefixGap,
+                    y: 0,
+                    width: contentImage.size.width,
+                    height: contentImage.size.height
+                )
+            )
+        }
+
+        image.isTemplate = false
+        return image
+    }
+
+    private static func combineColumnsHorizontally(_ columns: [NSImage], appearance: NSAppearance) -> NSImage {
+        guard !columns.isEmpty else {
+            return NSImage(size: NSSize(width: 1, height: quotaAndResetTimesImageHeight))
+        }
+
+        let gap: CGFloat = 10
+        let totalWidth = columns.reduce(CGFloat(0)) { $0 + $1.size.width } + gap * CGFloat(max(0, columns.count - 1))
+        let maxHeight = columns.map(\.size.height).max() ?? quotaAndResetTimesImageHeight
+        let imageSize = NSSize(width: ceil(totalWidth), height: maxHeight)
+        let combined = NSImage(size: imageSize)
+        combined.lockFocus()
+        defer { combined.unlockFocus() }
+
+        appearance.performAsCurrentDrawingAppearance {
+            var currentX: CGFloat = 0
+            for (index, columnImage) in columns.enumerated() {
+                columnImage.draw(
+                    in: NSRect(
+                        x: currentX,
+                        y: (maxHeight - columnImage.size.height) / 2,
+                        width: columnImage.size.width,
+                        height: columnImage.size.height
+                    )
+                )
+                currentX += columnImage.size.width
+                if index < columns.count - 1 {
+                    let dividerX = currentX + gap / 2
+                    let divider = NSBezierPath()
+                    divider.move(to: NSPoint(x: dividerX, y: 4))
+                    divider.line(to: NSPoint(x: dividerX, y: maxHeight - 4))
+                    divider.lineWidth = 1.0
+                    NSColor.labelColor.withAlphaComponent(0.18).setStroke()
+                    divider.stroke()
+                    currentX += gap
+                }
+            }
+        }
+
+        combined.isTemplate = false
+        return combined
     }
 
     private static func render(

@@ -3,7 +3,7 @@ import Foundation
 
 if CommandLine.arguments.contains("--once") {
     do {
-        let usage = try CodexUsageFetcher.fetchSync()
+        let usage = try CodexUsageFetcher.fetchCombinedSync()
         print(usage.menuTitle)
         exit(0)
     } catch {

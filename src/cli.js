@@ -1,19 +1,31 @@
 #!/usr/bin/env node
-import { readCodexRateLimits } from "./app-server-client.js";
-import { formatTextStatus, normalizeUsage } from "./usage-format.js";
+import { readAntigravityQuota, readCodexRateLimits } from "./app-server-client.js";
+import { formatCombinedTextStatus, normalizeAntigravityUsage, normalizeUsage } from "./usage-format.js";
 
 const args = new Set(process.argv.slice(2));
 
-try {
-  const raw = await readCodexRateLimits();
-  const usage = normalizeUsage(raw);
+const [codexResult, agyResult] = await Promise.allSettled([
+  readCodexRateLimits().then((raw) => normalizeUsage(raw)),
+  readAntigravityQuota().then((raw) => normalizeAntigravityUsage(raw)),
+]);
 
-  if (args.has("--json")) {
-    console.log(JSON.stringify(usage, null, 2));
-  } else {
-    console.log(formatTextStatus(usage));
-  }
-} catch (error) {
-  console.error(`Unable to read Codex usage safely: ${error.message}`);
+const combined = {
+  codex: codexResult.status === "fulfilled" ? codexResult.value : null,
+  gemini: agyResult.status === "fulfilled" ? agyResult.value.gemini : null,
+  claudeGpt: agyResult.status === "fulfilled" ? agyResult.value.claudeGpt : null,
+  errors: {
+    codex: codexResult.status === "rejected" ? codexResult.reason?.message ?? String(codexResult.reason) : null,
+    antigravity: agyResult.status === "rejected" ? agyResult.reason?.message ?? String(agyResult.reason) : null,
+  },
+};
+
+if (!combined.codex && !combined.gemini && !combined.claudeGpt) {
+  console.error(
+    `Unable to read Codex or Antigravity usage safely: Codex(${combined.errors.codex}) / Antigravity(${combined.errors.antigravity})`,
+  );
   process.exitCode = 1;
+} else if (args.has("--json")) {
+  console.log(JSON.stringify(combined, null, 2));
+} else {
+  console.log(formatCombinedTextStatus(combined));
 }

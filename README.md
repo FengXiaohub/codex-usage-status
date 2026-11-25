@@ -87,8 +87,8 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 ## Install from release
 
 1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest):
-   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.4.1-macos-arm64.zip`
-   - **Intel Mac**: `CodexUsageStatus-0.4.1-macos-x86_64.zip`
+   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.4.2-macos-arm64.zip`
+   - **Intel Mac**: `CodexUsageStatus-0.4.2-macos-x86_64.zip`
 2. Unzip it.
 3. Move `CodexUsageStatus.app` to `/Applications`.
 4. Open `CodexUsageStatus.app`.

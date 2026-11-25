@@ -58,8 +58,18 @@ export class AppServerClient {
       this.stderrTail = redactSensitive(`${this.stderrTail}${chunk}`).slice(-4000);
     });
 
+    this.child.on("error", (error) => {
+      for (const { reject, timeout } of this.pending.values()) {
+        clearTimeout(timeout);
+        reject(error);
+      }
+      this.pending.clear();
+      this.child = undefined;
+    });
+
     this.child.on("exit", () => {
-      for (const { reject } of this.pending.values()) {
+      for (const { reject, timeout } of this.pending.values()) {
+        clearTimeout(timeout);
         reject(new Error("Codex app-server exited before responding."));
       }
       this.pending.clear();
@@ -99,7 +109,7 @@ export class AppServerClient {
       clientInfo: {
         name: "codex_usage_status",
         title: "Codex Usage Status",
-        version: "0.4.0",
+        version: "0.4.2",
       },
       capabilities: {
         experimentalApi: true,

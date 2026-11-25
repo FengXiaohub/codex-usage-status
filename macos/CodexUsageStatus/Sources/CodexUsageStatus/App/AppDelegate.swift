@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastRefreshDate: Date?
     private var lastError: Error?
     private var lastClientSignature: String = ""
+    private var appearanceObservation: NSKeyValueObservation?
 
     private var usesChinese: Bool {
         Locale.current.language.languageCode?.identifier == "zh"
@@ -82,6 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.title = ""
             button.imagePosition = .imageOnly
             button.toolTip = "Codex & Antigravity usage: waiting for first refresh"
+            appearanceObservation = button.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.renderCurrentBadge()
+                }
+            }
         }
         renderCurrentBadge()
 
@@ -218,6 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "Codex & Antigravity Usage Status"
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }
 

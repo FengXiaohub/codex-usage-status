@@ -212,34 +212,49 @@ enum CodexUsageFetcher {
         }
 
         let responseBox = ResponseBox()
+        let errorBox = DataAccumulatorBox()
         standardOutput.fileHandleForReading.readabilityHandler = { handle in
             responseBox.append(handle.availableData)
+        }
+        standardError.fileHandleForReading.readabilityHandler = { handle in
+            errorBox.append(handle.availableData)
         }
 
         do {
             try process.run()
         } catch {
             standardOutput.fileHandleForReading.readabilityHandler = nil
+            standardError.fileHandleForReading.readabilityHandler = nil
             throw error
         }
 
         let requestLines = [
-            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.4.0"},"capabilities":{"experimentalApi":true}}}"#,
+            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.4.2"},"capabilities":{"experimentalApi":true}}}"#,
             #"{"method":"initialized"}"#,
             #"{"method":"account/rateLimits/read","id":2}"#
         ].joined(separator: "\n") + "\n"
 
-        standardInput.fileHandleForWriting.write(Data(requestLines.utf8))
+        do {
+            try standardInput.fileHandleForWriting.write(contentsOf: Data(requestLines.utf8))
+        } catch {
+            standardOutput.fileHandleForReading.readabilityHandler = nil
+            standardError.fileHandleForReading.readabilityHandler = nil
+            try? standardInput.fileHandleForWriting.close()
+            terminateProcess(process, finished: finished)
+            throw FetchError.appServerError
+        }
 
         if responseBox.wait(timeout: .now() + AppConfig.appServerTimeout) == .timedOut {
             standardOutput.fileHandleForReading.readabilityHandler = nil
-            standardInput.fileHandleForWriting.closeFile()
+            standardError.fileHandleForReading.readabilityHandler = nil
+            try? standardInput.fileHandleForWriting.close()
             terminateProcess(process, finished: finished)
             throw FetchError.timeout
         }
 
         standardOutput.fileHandleForReading.readabilityHandler = nil
-        standardInput.fileHandleForWriting.closeFile()
+        standardError.fileHandleForReading.readabilityHandler = nil
+        try? standardInput.fileHandleForWriting.close()
         terminateProcess(process, finished: finished)
         _ = standardError.fileHandleForReading.readDataToEndOfFile()
 

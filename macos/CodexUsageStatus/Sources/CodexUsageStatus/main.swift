@@ -1,5 +1,8 @@
 import AppKit
+import Darwin
 import Foundation
+
+signal(SIGPIPE, SIG_IGN)
 
 if CommandLine.arguments.contains("--once") {
     do {

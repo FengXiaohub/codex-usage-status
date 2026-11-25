@@ -1,3 +1,4 @@
+import CFNetwork
 import Darwin
 import Foundation
 
@@ -113,6 +114,8 @@ enum CodexUsageFetcher {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: agyPath)
         process.arguments = ["-p", "/usage", "--output-format", "json"]
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.environment = environmentWithSystemProxy()
 
         let standardOutput = Pipe()
         let standardError = Pipe()
@@ -125,24 +128,31 @@ enum CodexUsageFetcher {
         }
 
         let outputBox = DataAccumulatorBox()
+        let errorBox = DataAccumulatorBox()
         standardOutput.fileHandleForReading.readabilityHandler = { handle in
             outputBox.append(handle.availableData)
+        }
+        standardError.fileHandleForReading.readabilityHandler = { handle in
+            errorBox.append(handle.availableData)
         }
 
         do {
             try process.run()
         } catch {
             standardOutput.fileHandleForReading.readabilityHandler = nil
+            standardError.fileHandleForReading.readabilityHandler = nil
             throw error
         }
 
         if finished.wait(timeout: .now() + AppConfig.appServerTimeout) == .timedOut {
             standardOutput.fileHandleForReading.readabilityHandler = nil
+            standardError.fileHandleForReading.readabilityHandler = nil
             terminateProcess(process, finished: finished)
             throw FetchError.timeout
         }
 
         standardOutput.fileHandleForReading.readabilityHandler = nil
+        standardError.fileHandleForReading.readabilityHandler = nil
         let remaining = standardOutput.fileHandleForReading.readDataToEndOfFile()
         outputBox.append(remaining)
         _ = standardError.fileHandleForReading.readDataToEndOfFile()
@@ -174,6 +184,8 @@ enum CodexUsageFetcher {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexPath)
         process.arguments = ["app-server", "--listen", "stdio://"]
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.environment = environmentWithSystemProxy()
 
         let standardInput = Pipe()
         let standardOutput = Pipe()
@@ -228,6 +240,69 @@ enum CodexUsageFetcher {
         case .none:
             throw FetchError.missingRateLimitResponse
         }
+    }
+
+    private static func environmentWithSystemProxy() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+
+        let extraPaths = [
+            NSHomeDirectory() + "/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+        let existingPath = env["PATH"] ?? ""
+        let existingParts = existingPath.split(separator: ":").map(String.init)
+        let mergedParts = extraPaths.filter { !existingParts.contains($0) } + existingParts
+        env["PATH"] = mergedParts.joined(separator: ":")
+
+        guard let proxyDict = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
+            return env
+        }
+
+        let httpEnabled = (proxyDict[kCFNetworkProxiesHTTPEnable as String] as? NSNumber)?.boolValue ?? false
+        if httpEnabled,
+           let host = proxyDict[kCFNetworkProxiesHTTPProxy as String] as? String,
+           let port = proxyDict[kCFNetworkProxiesHTTPPort as String] as? NSNumber {
+            let url = "http://\(host):\(port.intValue)"
+            if env["http_proxy"] == nil && env["HTTP_PROXY"] == nil {
+                env["http_proxy"] = url
+                env["HTTP_PROXY"] = url
+            }
+        }
+
+        let httpsEnabled = (proxyDict[kCFNetworkProxiesHTTPSEnable as String] as? NSNumber)?.boolValue ?? false
+        if httpsEnabled,
+           let host = proxyDict[kCFNetworkProxiesHTTPSProxy as String] as? String,
+           let port = proxyDict[kCFNetworkProxiesHTTPSPort as String] as? NSNumber {
+            let url = "http://\(host):\(port.intValue)"
+            if env["https_proxy"] == nil && env["HTTPS_PROXY"] == nil {
+                env["https_proxy"] = url
+                env["HTTPS_PROXY"] = url
+            }
+        }
+
+        let socksEnabled = (proxyDict[kCFNetworkProxiesSOCKSEnable as String] as? NSNumber)?.boolValue ?? false
+        if socksEnabled,
+           let host = proxyDict[kCFNetworkProxiesSOCKSProxy as String] as? String,
+           let port = proxyDict[kCFNetworkProxiesSOCKSPort as String] as? NSNumber {
+            let url = "socks5://\(host):\(port.intValue)"
+            if env["all_proxy"] == nil && env["ALL_PROXY"] == nil {
+                env["all_proxy"] = url
+                env["ALL_PROXY"] = url
+            }
+        }
+
+        if env["no_proxy"] == nil && env["NO_PROXY"] == nil {
+            let defaultNoProxy = "localhost,127.0.0.1,::1,*.local"
+            env["no_proxy"] = defaultNoProxy
+            env["NO_PROXY"] = defaultNoProxy
+        }
+
+        return env
     }
 
     private static func terminateProcess(_ process: Process, finished: DispatchSemaphore) {

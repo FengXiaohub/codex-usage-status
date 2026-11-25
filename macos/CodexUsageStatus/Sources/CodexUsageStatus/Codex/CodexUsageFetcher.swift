@@ -201,7 +201,7 @@ enum CodexUsageFetcher {
         }
 
         let requestLines = [
-            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}"#,
+            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.4.0"},"capabilities":{"experimentalApi":true}}}"#,
             #"{"method":"initialized"}"#,
             #"{"method":"account/rateLimits/read","id":2}"#
         ].joined(separator: "\n") + "\n"

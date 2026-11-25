@@ -99,7 +99,7 @@ export class AppServerClient {
       clientInfo: {
         name: "codex_usage_status",
         title: "Codex Usage Status",
-        version: "0.1.0",
+        version: "0.4.0",
       },
       capabilities: {
         experimentalApi: true,

@@ -10,8 +10,17 @@ enum AppConfig {
     static var defaultAgyPaths: [String] {
         [
             NSHomeDirectory() + "/.local/bin/agy",
+            "/Applications/Antigravity.app/Contents/Resources/bin/agy",
             "/usr/local/bin/agy",
             "/opt/homebrew/bin/agy",
+        ]
+    }
+    static var watchedClientPaths: [String] {
+        [
+            "/Applications/Antigravity.app/Contents/Info.plist",
+            "/Applications/ChatGPT.app/Contents/Info.plist",
+            "/Applications/Codex.app/Contents/Info.plist",
+            NSHomeDirectory() + "/.local/bin/agy",
         ]
     }
     static let minimumRefreshInterval: TimeInterval = 60

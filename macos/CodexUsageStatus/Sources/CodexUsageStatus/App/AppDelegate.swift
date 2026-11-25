@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastUsage: CombinedUsageSummary?
     private var lastRefreshDate: Date?
     private var lastError: Error?
+    private var lastClientSignature: String = ""
 
     private var usesChinese: Bool {
         Locale.current.language.languageCode?.identifier == "zh"
@@ -112,7 +113,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        lastClientSignature = Self.currentClientSignature()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWakeOrActivate),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWakeOrActivate),
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
         refresh()
+    }
+
+    @objc private func workspaceDidWakeOrActivate(_ notification: Notification) {
+        let newSignature = Self.currentClientSignature()
+        if newSignature != lastClientSignature {
+            lastClientSignature = newSignature
+            refresh()
+            return
+        }
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+           let name = app.localizedName?.lowercased(),
+           name.contains("antigravity") || name.contains("chatgpt") || name.contains("codex") {
+            refresh()
+        }
+    }
+
+    private static func currentClientSignature() -> String {
+        AppConfig.watchedClientPaths.map { path in
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+                  let mtime = attrs[.modificationDate] as? Date else {
+                return "\(path):missing"
+            }
+            return "\(path):\(Int(mtime.timeIntervalSince1970))"
+        }.joined(separator: "|")
     }
 
     @objc private func refreshFromMenu() {

@@ -212,13 +212,13 @@ struct UsageSummary: Sendable {
         let geminiGroup = groups.first { group in
             (group.name?.localizedCaseInsensitiveContains("gemini") == true)
                 || (group.buckets?.contains { $0.id?.lowercased().hasPrefix("gemini") == true } == true)
-        }
+        } ?? groups.first
 
         let claudeGptGroup = groups.first { group in
             (group.name?.localizedCaseInsensitiveContains("claude") == true)
                 || (group.name?.localizedCaseInsensitiveContains("gpt") == true)
                 || (group.buckets?.contains { $0.id?.lowercased().hasPrefix("3p") == true } == true)
-        }
+        } ?? (groups.count > 1 ? groups[1] : nil)
 
         let gemini = geminiGroup.flatMap { Self.fromAntigravityGroup($0, shortLabel: "G", title: "Antigravity Gemini") }
         let claudeGpt = claudeGptGroup.flatMap { Self.fromAntigravityGroup($0, shortLabel: "A", title: "Antigravity Claude & GPT") }

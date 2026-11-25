@@ -100,8 +100,19 @@ enum CodexUsageFetcher {
     }
 
     static func fetchAntigravitySync() throws -> (gemini: UsageSummary?, claudeGpt: UsageSummary?) {
-        let envelope = try readAntigravityUsage()
-        return try UsageSummary.parseAntigravityGroups(from: envelope)
+        var lastError: Error?
+        for attempt in 0..<2 {
+            do {
+                let envelope = try readAntigravityUsage()
+                return try UsageSummary.parseAntigravityGroups(from: envelope)
+            } catch {
+                lastError = error
+                if attempt == 0 {
+                    Thread.sleep(forTimeInterval: 2.0)
+                }
+            }
+        }
+        throw lastError ?? FetchError.missingRateLimitResponse
     }
 
     private static func readAntigravityUsage() throws -> AntigravityUsageEnvelope {
@@ -144,7 +155,7 @@ enum CodexUsageFetcher {
             throw error
         }
 
-        if finished.wait(timeout: .now() + AppConfig.appServerTimeout) == .timedOut {
+        if finished.wait(timeout: .now() + AppConfig.antigravityTimeout) == .timedOut {
             standardOutput.fileHandleForReading.readabilityHandler = nil
             standardError.fileHandleForReading.readabilityHandler = nil
             terminateProcess(process, finished: finished)
@@ -264,10 +275,12 @@ enum CodexUsageFetcher {
         }
 
         let httpEnabled = (proxyDict[kCFNetworkProxiesHTTPEnable as String] as? NSNumber)?.boolValue ?? false
+        var httpProxyURL: String?
         if httpEnabled,
            let host = proxyDict[kCFNetworkProxiesHTTPProxy as String] as? String,
            let port = proxyDict[kCFNetworkProxiesHTTPPort as String] as? NSNumber {
             let url = "http://\(host):\(port.intValue)"
+            httpProxyURL = url
             if env["http_proxy"] == nil && env["HTTP_PROXY"] == nil {
                 env["http_proxy"] = url
                 env["HTTP_PROXY"] = url
@@ -275,24 +288,33 @@ enum CodexUsageFetcher {
         }
 
         let httpsEnabled = (proxyDict[kCFNetworkProxiesHTTPSEnable as String] as? NSNumber)?.boolValue ?? false
+        var httpsProxyURL: String?
         if httpsEnabled,
            let host = proxyDict[kCFNetworkProxiesHTTPSProxy as String] as? String,
            let port = proxyDict[kCFNetworkProxiesHTTPSPort as String] as? NSNumber {
             let url = "http://\(host):\(port.intValue)"
+            httpsProxyURL = url
             if env["https_proxy"] == nil && env["HTTPS_PROXY"] == nil {
                 env["https_proxy"] = url
                 env["HTTPS_PROXY"] = url
             }
         }
 
-        let socksEnabled = (proxyDict[kCFNetworkProxiesSOCKSEnable as String] as? NSNumber)?.boolValue ?? false
-        if socksEnabled,
-           let host = proxyDict[kCFNetworkProxiesSOCKSProxy as String] as? String,
-           let port = proxyDict[kCFNetworkProxiesSOCKSPort as String] as? NSNumber {
-            let url = "socks5://\(host):\(port.intValue)"
+        if let preferredAllProxy = httpsProxyURL ?? httpProxyURL {
             if env["all_proxy"] == nil && env["ALL_PROXY"] == nil {
-                env["all_proxy"] = url
-                env["ALL_PROXY"] = url
+                env["all_proxy"] = preferredAllProxy
+                env["ALL_PROXY"] = preferredAllProxy
+            }
+        } else {
+            let socksEnabled = (proxyDict[kCFNetworkProxiesSOCKSEnable as String] as? NSNumber)?.boolValue ?? false
+            if socksEnabled,
+               let host = proxyDict[kCFNetworkProxiesSOCKSProxy as String] as? String,
+               let port = proxyDict[kCFNetworkProxiesSOCKSPort as String] as? NSNumber {
+                let url = "socks5://\(host):\(port.intValue)"
+                if env["all_proxy"] == nil && env["ALL_PROXY"] == nil {
+                    env["all_proxy"] = url
+                    env["ALL_PROXY"] = url
+                }
             }
         }
 

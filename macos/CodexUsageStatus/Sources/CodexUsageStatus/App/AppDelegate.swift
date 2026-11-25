@@ -25,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let refreshInterval = configuredRefreshInterval()
     private var badgeStyle = BadgeStyle.load()
     private var lastUsage: CombinedUsageSummary?
+    private var lastValidCodex: UsageSummary?
+    private var lastValidGemini: UsageSummary?
+    private var lastValidClaudeGpt: UsageSummary?
+    private var consecutiveCodexFailures = 0
+    private var consecutiveAntigravityFailures = 0
     private var lastRefreshDate: Date?
     private var lastError: Error?
     private var lastClientSignature: String = ""
@@ -130,6 +135,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func workspaceDidWakeOrActivate(_ notification: Notification) {
+        if notification.name == NSWorkspace.didWakeNotification {
+            DispatchQueue.main.asyncAfter(deadline: .now() + AppConfig.wakeRefreshDelay) { [weak self] in
+                guard let self else { return }
+                self.lastClientSignature = Self.currentClientSignature()
+                self.refresh()
+            }
+            return
+        }
+
         let newSignature = Self.currentClientSignature()
         if newSignature != lastClientSignature {
             lastClientSignature = newSignature
@@ -139,7 +153,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
            let name = app.localizedName?.lowercased(),
            name.contains("antigravity") || name.contains("chatgpt") || name.contains("codex") {
-            refresh()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                self?.refresh()
+            }
         }
     }
 
@@ -240,14 +256,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.isRefreshing = false
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
-                self.applyUsage(usage)
-                self.scheduleNextRefresh(after: self.refreshInterval)
+                let hadTransientFailure = self.applyUsage(usage)
+                self.scheduleNextRefresh(after: hadTransientFailure ? AppConfig.transientRetryInterval : self.refreshInterval)
             } catch {
                 self.isRefreshing = false
                 self.refreshItem.isEnabled = true
                 self.refreshItem.title = "Refresh"
-                self.applyError(error)
-                self.scheduleNextRefresh(after: AppConfig.errorRetryInterval)
+                let retainedStale = self.applyError(error)
+                self.scheduleNextRefresh(after: retainedStale ? AppConfig.transientRetryInterval : AppConfig.errorRetryInterval)
             }
         }
     }
@@ -257,15 +273,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(timeInterval: seconds, target: self, selector: #selector(timerDidFire), userInfo: nil, repeats: false)
     }
 
-    private func applyUsage(_ usage: CombinedUsageSummary) {
-        lastUsage = usage
+    @discardableResult
+    private func applyUsage(_ usage: CombinedUsageSummary) -> Bool {
+        var resolvedCodex = usage.codex
+        var resolvedCodexError = usage.codexError
+        var hadTransientFailure = false
+
+        if let codex = usage.codex {
+            lastValidCodex = codex
+            consecutiveCodexFailures = 0
+        } else {
+            consecutiveCodexFailures += 1
+            if consecutiveCodexFailures <= AppConfig.maxStaleFailuresBeforeError, let cached = lastValidCodex {
+                resolvedCodex = cached
+                resolvedCodexError = nil
+                hadTransientFailure = true
+            }
+        }
+
+        var resolvedGemini = usage.gemini
+        var resolvedClaudeGpt = usage.claudeGpt
+        var resolvedAgyError = usage.antigravityError
+
+        if usage.gemini != nil || usage.claudeGpt != nil {
+            if let gemini = usage.gemini { lastValidGemini = gemini }
+            if let claudeGpt = usage.claudeGpt { lastValidClaudeGpt = claudeGpt }
+            consecutiveAntigravityFailures = 0
+        } else {
+            consecutiveAntigravityFailures += 1
+            if consecutiveAntigravityFailures <= AppConfig.maxStaleFailuresBeforeError,
+               (lastValidGemini != nil || lastValidClaudeGpt != nil) {
+                resolvedGemini = lastValidGemini
+                resolvedClaudeGpt = lastValidClaudeGpt
+                resolvedAgyError = nil
+                hadTransientFailure = true
+            }
+        }
+
+        let merged = CombinedUsageSummary(
+            codex: resolvedCodex,
+            gemini: resolvedGemini,
+            claudeGpt: resolvedClaudeGpt,
+            codexError: resolvedCodexError,
+            antigravityError: resolvedAgyError
+        )
+
+        lastUsage = merged
         lastRefreshDate = Date()
         lastError = nil
-        updateExpiryItems(for: usage)
+        updateExpiryItems(for: merged)
         renderCurrentBadge()
+        return hadTransientFailure
     }
 
-    private func applyError(_ error: Error) {
+    @discardableResult
+    private func applyError(_ error: Error) -> Bool {
+        consecutiveCodexFailures += 1
+        consecutiveAntigravityFailures += 1
+
+        if consecutiveCodexFailures <= AppConfig.maxStaleFailuresBeforeError,
+           consecutiveAntigravityFailures <= AppConfig.maxStaleFailuresBeforeError,
+           let cachedUsage = lastUsage,
+           cachedUsage.hasAnyUsage {
+            return true
+        }
+
         lastError = error
         let failureText = usesChinese ? "读取失败" : "Unavailable"
         codexFiveHourItem.isHidden = false
@@ -278,6 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         claudeGptFiveHourItem.title = "[A] Claude & GPT 5H -- · \(failureText)"
         claudeGptWeeklyItem.title = "[A] Claude & GPT 7D -- · \(failureText)"
         renderCurrentBadge()
+        return false
     }
 
     private func updateExpiryItems(for usage: CombinedUsageSummary) {

@@ -87,15 +87,20 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 ## Install from release
 
 1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest):
-   - Apple Silicon: `CodexUsageStatus-<version>-macos-arm64.zip`
-   - Intel: `CodexUsageStatus-<version>-macos-x86_64.zip`
+   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.4.0-macos-arm64.zip`
+   - **Intel Mac**: `CodexUsageStatus-0.4.0-macos-x86_64.zip`
 2. Unzip it.
 3. Move `CodexUsageStatus.app` to `/Applications`.
 4. Open `CodexUsageStatus.app`.
 
-The app is a menu-bar-only app, so it does not appear in the Dock. Optional: add it to macOS System Settings > General > Login Items.
+### First-launch & auto-sync notes
 
-Unsigned GitHub builds may trigger macOS Gatekeeper warnings. For a public polished release, sign with an Apple Developer ID and notarize the app.
+- **Gatekeeper warning (unsigned build)**: Because release ZIPs are ad-hoc signed, macOS may show an unidentified-developer prompt on first launch. You can allow it in **System Settings > Privacy & Security > Open Anyway**, or run:
+  ```sh
+  xattr -cr /Applications/CodexUsageStatus.app
+  ```
+- **Menu-bar-only**: The app does not appear in the Dock. Optional: add it to **macOS System Settings > General > Login Items** to launch automatically at login.
+- **Automatic sync with client updates**: The app reads live quotas directly from your installed `ChatGPT.app` / `Codex.app` and `agy` CLI without hardcoding model lists, and automatically refreshes whenever those clients update or launch.
 
 ---
 

@@ -82,16 +82,23 @@ macOS 应用支持最新版 ChatGPT 桌面端应用包路径（Codex 内嵌于 `
 
 ---
 
-## 从 Release 安装
+## 从 Release 安装（免编译直接使用）
 
 1. 前往 [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest) 下载对应你 Mac 芯片架构的最新压缩包：
-   - Apple Silicon (M 系列芯片)：`CodexUsageStatus-<version>-macos-arm64.zip`
-   - Intel 芯片：`CodexUsageStatus-<version>-macos-x86_64.zip`
-2. 解压 ZIP 文件。
+   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.4.0-macos-arm64.zip`
+   - **Intel 芯片**：`CodexUsageStatus-0.4.0-macos-x86_64.zip`
+2. 双击解压 ZIP 文件。
 3. 将 `CodexUsageStatus.app` 拖入 `/Applications`（应用程序）目录。
-4. 打开 `CodexUsageStatus.app`。
+4. 双击打开 `CodexUsageStatus.app`。
 
-本应用为纯菜单栏常驻应用（Menu-bar-only），不会占用底部 Dock 栏。你也可以将其添加到 `macOS 系统设置 > 通用 > 登录项` 实现开机自启。
+### 首次运行与自动同步说明
+
+- **首次打开若提示“无法验证开发者”**：由于开源构建包暂未经过 Apple 开发者公证，首次打开可在 **系统设置 > 隐私与安全性** 中点击 **仍要打开**，或在终端执行以下命令解除隔离属性：
+  ```sh
+  xattr -cr /Applications/CodexUsageStatus.app
+  ```
+- **纯菜单栏运行**：应用不会占用底部 Dock 栏。如需开机自启，可将其添加到 **macOS 系统设置 > 通用 > 登录项**。
+- **随客户端更新实时同步**：插件内部不写死任何模型列表，而是直接调用你本机已安装的 `ChatGPT.app` / `Codex.app` 与 `agy` CLI 实时获取配额；当 Antigravity 或 ChatGPT/Codex 客户端升级或重新打开时，插件也会自动感知并即时刷新。
 
 ---
 

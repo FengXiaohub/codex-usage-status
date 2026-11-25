@@ -53,5 +53,6 @@ jobs:
           find artifacts -name '*.zip' -exec cp {} release-assets/ \;
           cat artifacts/CodexUsageStatus-macos-*/SHA256SUMS.txt > release-assets/SHA256SUMS.txt
           gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "${{ github.repository }}" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes

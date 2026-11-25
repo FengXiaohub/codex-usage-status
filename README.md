@@ -4,7 +4,15 @@
 
 Small, privacy-first macOS menu-bar app for showing **OpenAI Codex** and **Google Antigravity** (Gemini Models & Claude/GPT Models) usage quotas at a glance.
 
+![Codex & Antigravity 3-column menu-bar status](docs/assets/menu-bar-3col.png)
+
 ---
+
+## v0.4.2 update: Stability, system proxy & instant theme sync
+
+- **Automatic macOS system proxy inheritance**: When launched via Login Items or Finder (LaunchServices), the app dynamically reads macOS system proxy settings (`CFNetworkCopySystemProxySettings`) and injects them into `agy` / `codex` subprocesses so proxy users work out of the box.
+- **Anti-flicker resilience**: Adds a 35-second Antigravity timeout, automatic single retry, 5-second post-wake refresh delay, and stale-while-revalidate caching (retaining the last valid quota across 1–2 transient network blips instead of flashing red `?`).
+- **Instant Dark / Light mode redraw & hardened IPC**: Automatically re-renders when macOS appearance changes, brings the Settings dialog to front, and ignores `SIGPIPE` with safe Swift `FileHandle` writes.
 
 ## v0.4.0 update: 3-column horizontal Codex + Antigravity display
 

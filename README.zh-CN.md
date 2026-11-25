@@ -4,7 +4,15 @@
 
 轻量、零凭据接触的原生 macOS 顶部菜单栏应用，让你一眼看清 **OpenAI Codex** 与 **Google Antigravity**（Gemini 模型组 & Claude/GPT 模型组）的实时剩余配额与重置时间。
 
+![Codex & Antigravity 顶部菜单栏横向三列效果图](docs/assets/menu-bar-3col.png)
+
 ---
+
+## v0.4.2 更新：系统代理自动继承、防抖动容错与深浅色即时切换
+
+- **自动继承 macOS 系统代理**：在开机自启或访达双击启动（LaunchServices 无终端环境变量）场景下，自动读取 macOS 系统代理设置并注入 `agy` / `codex` 子进程，开箱即用不超时。
+- **防偶发断网变红**：Antigravity 超时放宽至 35 秒并内置自动重试；Mac 休眠唤醒后延迟 5 秒刷新；遇到 1~2 次瞬时网络抖动时保留上次有效配额并 30 秒快速重试（连续 3 次失败才显示红色 `?`）。
+- **深浅色主题即时重绘与管道加固**：系统自动切换 Dark/Light 模式时立即重绘菜单栏文字；修复 `Settings...` 弹窗置顶与 `SIGPIPE` 管道容错。
 
 ## v0.4.0 更新：Codex + Antigravity 横向三列并排显示
 

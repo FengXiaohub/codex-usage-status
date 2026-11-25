@@ -85,8 +85,8 @@ macOS 应用支持最新版 ChatGPT 桌面端应用包路径（Codex 内嵌于 `
 ## 从 Release 安装（免编译直接使用）
 
 1. 前往 [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest) 下载对应你 Mac 芯片架构的最新压缩包：
-   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.4.0-macos-arm64.zip`
-   - **Intel 芯片**：`CodexUsageStatus-0.4.0-macos-x86_64.zip`
+   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.4.1-macos-arm64.zip`
+   - **Intel 芯片**：`CodexUsageStatus-0.4.1-macos-x86_64.zip`
 2. 双击解压 ZIP 文件。
 3. 将 `CodexUsageStatus.app` 拖入 `/Applications`（应用程序）目录。
 4. 双击打开 `CodexUsageStatus.app`。

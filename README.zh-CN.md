@@ -8,6 +8,12 @@
 
 ---
 
+## v0.4.4 更新：直连本地 Antigravity 服务、彻底消除 `sandboxd` 死锁与 CPU 死循环
+
+- **直连 `127.0.0.1` 本地接口（彻底移除 `agy` 子进程）**：直接从运行中的 Antigravity 桌面端发现文件（`~/.gemini/antigravity/daemon/hub_*.json`）向 `127.0.0.1` 发起 `RetrieveUserQuotaSummary` 只读请求，并显式绕过公司 VPN / PAC / 系统代理。查询耗时降至约 **5 毫秒**，彻底避免拉起 `agy` 命令行触发 macOS `sandboxd` 64 线程死锁，开机自启更稳。
+- **修复深浅色主题 KVO 引起的 `99.5%` CPU 死循环**：改为监听 `NSApp.effectiveAppearance` 并按深浅色状态去重，仅在真正切换外观时重绘一次，常驻 CPU 保持 `0.0%`。
+- **隔离工作目录与无感静默等待**：`codex app-server` 运行于独立 `0700` 空临时目录；开机尚未打开 Antigravity 桌面端时，`G`/`A` 列安静保留缓存或显示 `--`（不再闪红 `?`），打开桌面端后自动实时同步。
+
 ## v0.4.2 更新：系统代理自动继承、防抖动容错与深浅色即时切换
 
 - **自动继承 macOS 系统代理**：在开机自启或访达双击启动（LaunchServices 无终端环境变量）场景下，自动读取 macOS 系统代理设置并注入 `agy` / `codex` 子进程，开箱即用不超时。
@@ -73,9 +79,9 @@ macOS 应用支持最新版 ChatGPT 桌面端应用包路径（Codex 内嵌于 `
 
 本应用严格遵守最小权限与本地安全边界：
 
-- **Codex 数据源**：仅调用官方本地 Codex `app-server` 的只读方法 `account/rateLimits/read`。
-- **Antigravity 数据源**：仅调用官方本地 Antigravity CLI 的只读命令 `agy -p "/usage" --output-format json`。
-- **绝不触碰凭据**：不修改任何客户端文件，**不读取** `~/.codex/auth.json` 或 Antigravity 本地凭据库，**不读取、不存储、不传输**任何 Token、Cookie、Session、OAuth 凭据、API Key 或浏览器数据。
+- **Codex 数据源**：仅在独立临时目录中调用官方本地 Codex `app-server` 的只读方法 `account/rateLimits/read`。
+- **Antigravity 数据源**：仅读取 `~/.gemini/antigravity/daemon/hub_*.json` 中的本机临时端口与 `csrfToken`，直连 `127.0.0.1` 调用官方只读接口 `RetrieveUserQuotaSummary`。
+- **绝不触碰凭据**：不修改任何客户端文件，**不读取** `~/.codex/auth.json`、Google OAuth 凭据或系统钥匙串，**不扫描**用户文稿目录，也不接触 Cookie、API Key 或浏览器数据。
 
 详见面向用户的隐私摘要 [PRIVACY.md](PRIVACY.md) 与工程硬边界规范 [SECURITY.md](SECURITY.md)。
 
@@ -86,15 +92,15 @@ macOS 应用支持最新版 ChatGPT 桌面端应用包路径（Codex 内嵌于 `
 - macOS 13 或更高版本
 - 已安装并登录以下至少一项工具：
   - **Codex**：安装于 `/Applications/ChatGPT.app` 或 `/Applications/Codex.app`（可通过环境变量 `CODEX_BIN` 自定义路径）
-  - **Antigravity CLI (`agy`)**：安装于 `~/.local/bin/agy`、`/usr/local/bin/agy` 或 `/opt/homebrew/bin/agy`（可通过环境变量 `AGY_BIN` 自定义路径）
+  - **Antigravity**：安装并运行 `/Applications/Antigravity.app` 桌面端
 
 ---
 
 ## 从 Release 安装（免编译直接使用）
 
 1. 前往 [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest) 下载对应你 Mac 芯片架构的最新压缩包：
-   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.4.2-macos-arm64.zip`
-   - **Intel 芯片**：`CodexUsageStatus-0.4.2-macos-x86_64.zip`
+   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.4.4-macos-arm64.zip`
+   - **Intel 芯片**：`CodexUsageStatus-0.4.4-macos-x86_64.zip`
 2. 双击解压 ZIP 文件。
 3. 将 `CodexUsageStatus.app` 拖入 `/Applications`（应用程序）目录。
 4. 双击打开 `CodexUsageStatus.app`。

@@ -8,6 +8,12 @@ Small, privacy-first macOS menu-bar app for showing **OpenAI Codex** and **Googl
 
 ---
 
+## v0.4.4 update: Direct local Antigravity daemon IPC & zero-CPU-loop stability
+
+- **Direct `127.0.0.1` loopback query (replaces `agy` CLI spawning)**: Reads live Antigravity quotas directly from the running Antigravity desktop daemon (`~/.gemini/antigravity/daemon/hub_*.json` → `RetrieveUserQuotaSummary` over `127.0.0.1`, bypassing VPN/PAC/system proxies via `connectionProxyDictionary = [:]`). Eliminates spawning `agy` subprocesses, cuts query latency to ~5 ms, and prevents macOS `sandboxd` TCC thread exhaustion on Login Item auto-start.
+- **Fixes 99.5% CPU appearance KVO loop**: Observes `NSApp.effectiveAppearance` with resolved light/dark deduplication instead of `NSStatusBarButton.effectiveAppearance`, keeping idle CPU at `0.0%`.
+- **Isolated `codex` working directory & quiet idle state**: Runs `codex app-server` in a dedicated `0700` temporary directory; when Antigravity desktop is not open yet at boot, `G`/`A` columns quietly retain cached values or show `--` instead of flashing red `?`, and sync automatically once Antigravity launches.
+
 ## v0.4.2 update: Stability, system proxy & instant theme sync
 
 - **Automatic macOS system proxy inheritance**: When launched via Login Items or Finder (LaunchServices), the app dynamically reads macOS system proxy settings (`CFNetworkCopySystemProxySettings`) and injects them into `agy` / `codex` subprocesses so proxy users work out of the box.
@@ -75,9 +81,9 @@ Added the compact `Quota & Reset Times` display style and English/Chinese locali
 
 This app strictly respects local credential boundaries:
 
-- **Codex**: Only calls the official local Codex app-server method `account/rateLimits/read`.
-- **Antigravity**: Only invokes the official local Antigravity CLI command `agy -p "/usage" --output-format json`.
-- It **does not** modify Codex or Antigravity, **does not** read `~/.codex/auth.json` or Antigravity credential stores, and **does not** handle tokens, cookies, sessions, OAuth credentials, API keys, or browser data.
+- **Codex**: Only calls the official local Codex app-server method `account/rateLimits/read` in an isolated temporary working directory.
+- **Antigravity**: Only calls the local Antigravity desktop daemon's read-only `RetrieveUserQuotaSummary` RPC over `127.0.0.1` using the session-local `csrfToken` from `~/.gemini/antigravity/daemon/hub_*.json`.
+- It **does not** modify Codex or Antigravity, **does not** read `~/.codex/auth.json` or Antigravity OAuth/Keychain credential stores, and **does not** touch user documents, cookies, API keys, or browser data.
 
 See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.md](SECURITY.md) for the hard engineering boundaries.
 
@@ -88,15 +94,15 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 - macOS 13 or later
 - At least one of the following installed and signed in:
   - **Codex**: `/Applications/ChatGPT.app` or `/Applications/Codex.app` (override with `CODEX_BIN`)
-  - **Antigravity CLI**: `~/.local/bin/agy`, `/usr/local/bin/agy`, or `/opt/homebrew/bin/agy` (override with `AGY_BIN`)
+  - **Antigravity**: `/Applications/Antigravity.app` (signed in and running)
 
 ---
 
 ## Install from release
 
 1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest):
-   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.4.2-macos-arm64.zip`
-   - **Intel Mac**: `CodexUsageStatus-0.4.2-macos-x86_64.zip`
+   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.4.4-macos-arm64.zip`
+   - **Intel Mac**: `CodexUsageStatus-0.4.4-macos-x86_64.zip`
 2. Unzip it.
 3. Move `CodexUsageStatus.app` to `/Applications`.
 4. Open `CodexUsageStatus.app`.

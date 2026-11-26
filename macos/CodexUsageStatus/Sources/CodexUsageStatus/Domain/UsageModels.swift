@@ -21,6 +21,11 @@ struct RateLimitWindow: Decodable, Sendable {
 struct AntigravityUsageEnvelope: Decodable, Sendable {
     let status: String?
     let command: AntigravityCommandPayload?
+    let response: AntigravityUsageData?
+
+    var groups: [AntigravityQuotaGroup]? {
+        response?.groups ?? command?.data?.groups
+    }
 }
 
 struct AntigravityCommandPayload: Decodable, Sendable {
@@ -35,6 +40,19 @@ struct AntigravityUsageData: Decodable, Sendable {
 struct AntigravityQuotaGroup: Decodable, Sendable {
     let name: String?
     let buckets: [AntigravityQuotaBucket]?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case displayName
+        case buckets
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decodeIfPresent(String.self, forKey: .displayName)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+        self.buckets = try container.decodeIfPresent([AntigravityQuotaBucket].self, forKey: .buckets)
+    }
 }
 
 struct AntigravityQuotaBucket: Decodable, Sendable {
@@ -46,10 +64,27 @@ struct AntigravityQuotaBucket: Decodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case bucketId
         case name
+        case displayName
         case window
-        case remainingFraction = "remaining_fraction"
-        case resetTime = "reset_time"
+        case remainingFraction
+        case remainingFractionSnake = "remaining_fraction"
+        case resetTime
+        case resetTimeSnake = "reset_time"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(String.self, forKey: .bucketId)
+            ?? container.decodeIfPresent(String.self, forKey: .id)
+        self.name = try container.decodeIfPresent(String.self, forKey: .displayName)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+        self.window = try container.decodeIfPresent(String.self, forKey: .window)
+        self.remainingFraction = try container.decodeIfPresent(Double.self, forKey: .remainingFraction)
+            ?? container.decodeIfPresent(Double.self, forKey: .remainingFractionSnake)
+        self.resetTime = try container.decodeIfPresent(String.self, forKey: .resetTime)
+            ?? container.decodeIfPresent(String.self, forKey: .resetTimeSnake)
     }
 }
 
@@ -205,7 +240,7 @@ struct UsageSummary: Sendable {
     }
 
     static func parseAntigravityGroups(from envelope: AntigravityUsageEnvelope) throws -> (gemini: UsageSummary?, claudeGpt: UsageSummary?) {
-        guard let groups = envelope.command?.data?.groups, !groups.isEmpty else {
+        guard let groups = envelope.groups, !groups.isEmpty else {
             throw FetchError.invalidOutput
         }
 

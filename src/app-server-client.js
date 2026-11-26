@@ -1,8 +1,19 @@
-import { execFile, spawn } from "node:child_process";
-import { accessSync, constants } from "node:fs";
-import { homedir } from "node:os";
+import { spawn } from "node:child_process";
+import { accessSync, constants, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import http from "node:http";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+
+function isolatedWorkingDir() {
+  const dir = join(tmpdir(), "codex-usage-status-empty-cwd");
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+  } catch {
+    // ignore
+  }
+  return dir;
+}
 
 const DEFAULT_CODEX_PATHS = [
   "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
@@ -49,6 +60,7 @@ export class AppServerClient {
     }
 
     this.child = spawn(this.codexBin, ["app-server", "--listen", "stdio://"], {
+      cwd: isolatedWorkingDir(),
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
     });
@@ -185,37 +197,119 @@ export async function readCodexRateLimits(options = {}) {
   }
 }
 
-export async function readAntigravityQuota(options = {}) {
-  const agyBin = resolveExecutable(options.agyBin ?? process.env.AGY_BIN, DEFAULT_AGY_PATHS);
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  return new Promise((resolve, reject) => {
-    execFile(
-      agyBin,
-      ["-p", "/usage", "--output-format", "json"],
-      { timeout: timeoutMs, maxBuffer: 2 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          const safeStderr = redactSensitive(String(stderr ?? "")).slice(-1000);
-          reject(new Error(`Antigravity CLI failed: ${error.message} ${safeStderr}`.trim()));
-          return;
-        }
-        try {
-          const lines = String(stdout)
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
-          const jsonLine = lines.reverse().find((line) => line.startsWith("{") && line.endsWith("}"));
-          if (!jsonLine) {
-            throw new Error("No JSON payload returned by agy /usage.");
-          }
-          resolve(JSON.parse(jsonLine));
-        } catch (parseError) {
-          reject(parseError);
-        }
-      },
-    );
-  });
+function discoverLiveAntigravityDaemons() {
+  const daemonDir = join(homedir(), ".gemini/antigravity/daemon");
+  let entries;
+  try {
+    entries = readdirSync(daemonDir);
+  } catch {
+    return [];
+  }
+
+  const candidates = entries
+    .filter((name) => name.startsWith("hub_") && name.endsWith(".json"))
+    .map((name) => {
+      const fullPath = join(daemonDir, name);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = statSync(fullPath).mtimeMs;
+      } catch {
+        // ignore
+      }
+      return { fullPath, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const live = [];
+  for (const { fullPath } of candidates) {
+    try {
+      const parsed = JSON.parse(readFileSync(fullPath, "utf8"));
+      if (
+        isProcessAlive(parsed?.pid) &&
+        Number.isInteger(parsed?.httpPort) &&
+        parsed.httpPort > 0 &&
+        parsed.httpPort <= 65535 &&
+        typeof parsed?.csrfToken === "string" &&
+        parsed.csrfToken.length > 0
+      ) {
+        live.push({ port: parsed.httpPort, csrfToken: parsed.csrfToken });
+      }
+    } catch {
+      // skip malformed discovery file
+    }
+  }
+  return live;
+}
+
+export async function readAntigravityQuota(options = {}) {
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const daemons = discoverLiveAntigravityDaemons();
+  if (daemons.length === 0) {
+    throw new Error("Antigravity desktop app is not running.");
+  }
+
+  let lastError = new Error("Antigravity local daemon did not return quota data.");
+  for (const daemon of daemons) {
+    try {
+      const payload = await new Promise((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: daemon.port,
+            path: "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Connect-Protocol-Version": "1",
+              "x-antigravity-csrf-token": daemon.csrfToken,
+              "Content-Length": 2,
+            },
+            timeout: timeoutMs,
+          },
+          (res) => {
+            let body = "";
+            res.setEncoding("utf8");
+            res.on("data", (chunk) => {
+              body += chunk;
+            });
+            res.on("end", () => {
+              if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+                reject(new Error(`Antigravity local daemon returned HTTP ${res.statusCode ?? "unknown"}`));
+                return;
+              }
+              try {
+                resolve(JSON.parse(body));
+              } catch (parseError) {
+                reject(parseError);
+              }
+            });
+          },
+        );
+        req.on("timeout", () => {
+          req.destroy(new Error("Timed out querying Antigravity local daemon."));
+        });
+        req.on("error", reject);
+        req.write("{}");
+        req.end();
+      });
+      return payload;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export function redactSensitive(value) {

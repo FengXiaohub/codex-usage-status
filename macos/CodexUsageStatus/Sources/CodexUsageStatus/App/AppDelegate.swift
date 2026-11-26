@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastError: Error?
     private var lastClientSignature: String = ""
     private var appearanceObservation: NSKeyValueObservation?
+    private var lastRenderedAppearanceName: NSAppearance.Name?
+
+    private static func resolvedAppearanceName(for appearance: NSAppearance) -> NSAppearance.Name {
+        appearance.bestMatch(from: [.darkAqua, .vibrantDark, .aqua, .vibrantLight]) ?? appearance.name
+    }
 
     private var usesChinese: Bool {
         Locale.current.language.languageCode?.identifier == "zh"
@@ -83,13 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.title = ""
             button.imagePosition = .imageOnly
             button.toolTip = "Codex & Antigravity usage: waiting for first refresh"
-            appearanceObservation = button.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
-                Task { @MainActor [weak self] in
-                    self?.renderCurrentBadge()
-                }
-            }
         }
         renderCurrentBadge()
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let currentAppearance = self.statusItem.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+                let resolvedName = Self.resolvedAppearanceName(for: currentAppearance)
+                guard resolvedName != self.lastRenderedAppearanceName else {
+                    return
+                }
+                self.renderCurrentBadge()
+            }
+        }
 
         menu.addItem(codexFiveHourItem)
         menu.addItem(codexWeeklyItem)
@@ -159,8 +170,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
            let name = app.localizedName?.lowercased(),
            name.contains("antigravity") || name.contains("chatgpt") || name.contains("codex") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
                 self?.refresh()
+            }
+            if name.contains("antigravity") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) { [weak self] in
+                    self?.refresh()
+                }
             }
         }
     }
@@ -217,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Refresh interval: \(Int(refreshInterval)) seconds
         Failure retry: \(Int(AppConfig.errorRetryInterval)) seconds
         Last refresh: \(lastRefresh)
-        Data sources: local Codex app-server & Antigravity CLI (agy /usage)
+        Data sources: local Codex app-server & Antigravity local daemon (127.0.0.1)
         """
 
         let alert = NSAlert()
@@ -305,6 +321,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if usage.gemini != nil || usage.claudeGpt != nil {
             if let gemini = usage.gemini { lastValidGemini = gemini }
             if let claudeGpt = usage.claudeGpt { lastValidClaudeGpt = claudeGpt }
+            consecutiveAntigravityFailures = 0
+        } else if usage.antigravityError == nil {
+            // Antigravity desktop app is not running yet: retain last known values quietly without flashing red.
+            resolvedGemini = lastValidGemini
+            resolvedClaudeGpt = lastValidClaudeGpt
             consecutiveAntigravityFailures = 0
         } else {
             consecutiveAntigravityFailures += 1
@@ -444,5 +465,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.title = ""
         button.image = image
         button.toolTip = tooltip
+        lastRenderedAppearanceName = Self.resolvedAppearanceName(for: button.effectiveAppearance)
     }
 }

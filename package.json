@@ -1,6 +1,6 @@
 {
   "name": "codex-usage-status",
-  "version": "0.4.2",
+  "version": "0.4.4",
   "description": "Read-only Codex & Antigravity usage status via official local CLI interfaces.",
   "type": "module",
   "private": true,

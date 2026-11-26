@@ -31,7 +31,11 @@ enum CodexUsageFetcher {
             geminiUsage = groups.gemini
             claudeGptUsage = groups.claudeGpt
         case .failure(let error):
-            agyError = error.localizedDescription
+            if case FetchError.antigravityNotRunning = error {
+                agyError = nil
+            } else {
+                agyError = error.localizedDescription
+            }
         }
 
         let combined = CombinedUsageSummary(
@@ -67,6 +71,8 @@ enum CodexUsageFetcher {
             let groups = try fetchAntigravitySync()
             geminiUsage = groups.gemini
             claudeGptUsage = groups.claudeGpt
+        } catch FetchError.antigravityNotRunning {
+            agyError = nil
         } catch {
             agyError = error.localizedDescription
         }
@@ -103,86 +109,119 @@ enum CodexUsageFetcher {
         var lastError: Error?
         for attempt in 0..<2 {
             do {
-                let envelope = try readAntigravityUsage()
+                let envelope = try readAntigravityUsageFromLocalDaemon()
                 return try UsageSummary.parseAntigravityGroups(from: envelope)
+            } catch FetchError.antigravityNotRunning {
+                throw FetchError.antigravityNotRunning
             } catch {
                 lastError = error
                 if attempt == 0 {
-                    Thread.sleep(forTimeInterval: 2.0)
+                    Thread.sleep(forTimeInterval: 1.0)
                 }
             }
         }
         throw lastError ?? FetchError.missingRateLimitResponse
     }
 
-    private static func readAntigravityUsage() throws -> AntigravityUsageEnvelope {
-        let configuredPath = ProcessInfo.processInfo.environment["AGY_BIN"]
-        let agyPath = configuredPath ?? AppConfig.defaultAgyPaths.first(where: FileManager.default.isExecutableFile(atPath:)) ?? AppConfig.defaultAgyPaths[0]
-        guard FileManager.default.isExecutableFile(atPath: agyPath) else {
-            throw FetchError.antigravityNotFound(agyPath)
+    private struct AntigravityDaemonDiscovery: Decodable {
+        let pid: Int32?
+        let httpPort: Int?
+        let csrfToken: String?
+    }
+
+    private static func discoverLiveAntigravityDaemons() -> [(port: Int, csrfToken: String)] {
+        let daemonDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini/antigravity/daemon", isDirectory: true)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: daemonDir,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: agyPath)
-        process.arguments = ["-p", "/usage", "--output-format", "json"]
-        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-        process.environment = environmentWithSystemProxy()
+        let hubFiles = entries
+            .filter { $0.lastPathComponent.hasPrefix("hub_") && $0.pathExtension == "json" }
+            .sorted { lhs, rhs in
+                let lDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lDate > rDate
+            }
 
-        let standardOutput = Pipe()
-        let standardError = Pipe()
-        process.standardOutput = standardOutput
-        process.standardError = standardError
+        var live: [(port: Int, csrfToken: String)] = []
+        let decoder = JSONDecoder()
+        for fileURL in hubFiles {
+            guard let data = try? Data(contentsOf: fileURL),
+                  let discovery = try? decoder.decode(AntigravityDaemonDiscovery.self, from: data),
+                  let pid = discovery.pid, pid > 0, kill(pid, 0) == 0,
+                  let port = discovery.httpPort, (1...65535).contains(port),
+                  let csrfToken = discovery.csrfToken, !csrfToken.isEmpty else {
+                continue
+            }
+            live.append((port: port, csrfToken: csrfToken))
+        }
+        return live
+    }
 
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in
-            finished.signal()
+    private static func readAntigravityUsageFromLocalDaemon() throws -> AntigravityUsageEnvelope {
+        let daemons = discoverLiveAntigravityDaemons()
+        guard !daemons.isEmpty else {
+            throw FetchError.antigravityNotRunning
         }
 
-        let outputBox = DataAccumulatorBox()
-        let errorBox = DataAccumulatorBox()
-        standardOutput.fileHandleForReading.readabilityHandler = { handle in
-            outputBox.append(handle.availableData)
+        var lastError: Error = FetchError.missingRateLimitResponse
+        for daemon in daemons {
+            guard let url = URL(string: "http://127.0.0.1:\(daemon.port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") else {
+                continue
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.httpBody = Data("{}".utf8)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
+            request.setValue(daemon.csrfToken, forHTTPHeaderField: "x-antigravity-csrf-token")
+
+            let config = URLSessionConfiguration.ephemeral
+            // Force direct loopback to 127.0.0.1 so corporate VPN / PAC / system proxies never intercept local IPC.
+            config.connectionProxyDictionary = [:]
+            config.timeoutIntervalForRequest = 8
+            config.timeoutIntervalForResource = 10
+
+            let session = URLSession(configuration: config)
+            defer { session.finishTasksAndInvalidate() }
+
+            let semaphore = DispatchSemaphore(value: 0)
+            let resultBox = HTTPResultBox()
+
+            let task = session.dataTask(with: request) { data, response, error in
+                resultBox.store(data: data, response: response, error: error)
+                semaphore.signal()
+            }
+            task.resume()
+
+            if semaphore.wait(timeout: .now() + .seconds(10)) == .timedOut {
+                task.cancel()
+                lastError = FetchError.timeout
+                continue
+            }
+
+            let outcome = resultBox.load()
+            if let error = outcome.error {
+                lastError = error
+                continue
+            }
+            guard let httpResponse = outcome.response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode),
+                  let data = outcome.data, !data.isEmpty else {
+                lastError = FetchError.invalidOutput
+                continue
+            }
+
+            return try JSONDecoder().decode(AntigravityUsageEnvelope.self, from: data)
         }
-        standardError.fileHandleForReading.readabilityHandler = { handle in
-            errorBox.append(handle.availableData)
-        }
 
-        do {
-            try process.run()
-        } catch {
-            standardOutput.fileHandleForReading.readabilityHandler = nil
-            standardError.fileHandleForReading.readabilityHandler = nil
-            throw error
-        }
-
-        if finished.wait(timeout: .now() + AppConfig.antigravityTimeout) == .timedOut {
-            standardOutput.fileHandleForReading.readabilityHandler = nil
-            standardError.fileHandleForReading.readabilityHandler = nil
-            terminateProcess(process, finished: finished)
-            throw FetchError.timeout
-        }
-
-        standardOutput.fileHandleForReading.readabilityHandler = nil
-        standardError.fileHandleForReading.readabilityHandler = nil
-        let remaining = standardOutput.fileHandleForReading.readDataToEndOfFile()
-        outputBox.append(remaining)
-        _ = standardError.fileHandleForReading.readDataToEndOfFile()
-
-        guard let text = String(data: outputBox.data(), encoding: .utf8) else {
-            throw FetchError.invalidOutput
-        }
-
-        let lines = text
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        guard let jsonLine = lines.reversed().first(where: { $0.hasPrefix("{") && $0.hasSuffix("}") }),
-              let jsonData = jsonLine.data(using: .utf8) else {
-            throw FetchError.missingRateLimitResponse
-        }
-
-        return try JSONDecoder().decode(AntigravityUsageEnvelope.self, from: jsonData)
+        throw lastError
     }
 
     private static func readRateLimits() throws -> RateLimitsResponse {
@@ -195,7 +234,7 @@ enum CodexUsageFetcher {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexPath)
         process.arguments = ["app-server", "--listen", "stdio://"]
-        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.currentDirectoryURL = isolatedWorkingDirectoryURL()
         process.environment = environmentWithSystemProxy()
 
         let standardInput = Pipe()
@@ -342,6 +381,17 @@ enum CodexUsageFetcher {
         return env
     }
 
+    private static func isolatedWorkingDirectoryURL() -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-usage-status-empty-cwd", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: dir,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        return dir
+    }
+
     private static func terminateProcess(_ process: Process, finished: DispatchSemaphore) {
         guard process.isRunning else {
             return
@@ -448,9 +498,31 @@ final class DataAccumulatorBox: @unchecked Sendable {
     }
 }
 
+final class HTTPResultBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data: Data?
+    private var response: URLResponse?
+    private var error: Error?
+
+    func store(data: Data?, response: URLResponse?, error: Error?) {
+        lock.lock()
+        self.data = data
+        self.response = response
+        self.error = error
+        lock.unlock()
+    }
+
+    func load() -> (data: Data?, response: URLResponse?, error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (data, response, error)
+    }
+}
+
 enum FetchError: LocalizedError {
     case codexNotFound(String)
     case antigravityNotFound(String)
+    case antigravityNotRunning
     case allProvidersUnavailable(codex: String, antigravity: String)
     case timeout
     case appServerExited(Int)
@@ -464,6 +536,8 @@ enum FetchError: LocalizedError {
             return "Codex binary not found at \(path)"
         case .antigravityNotFound(let path):
             return "Antigravity CLI (agy) binary not found at \(path)"
+        case .antigravityNotRunning:
+            return "Antigravity desktop app is not running"
         case .allProvidersUnavailable(let codex, let antigravity):
             return "Codex (\(codex)); Antigravity (\(antigravity))"
         case .timeout:

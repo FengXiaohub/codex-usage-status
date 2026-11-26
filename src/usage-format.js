@@ -30,18 +30,18 @@ export function normalizeUsage(rateLimitResponse, now = new Date()) {
 }
 
 export function normalizeAntigravityUsage(agyResponse, now = new Date()) {
-  const groups = agyResponse?.command?.data?.groups;
+  const groups = agyResponse?.response?.groups ?? agyResponse?.command?.data?.groups;
   if (!Array.isArray(groups) || groups.length === 0) {
     throw new Error("Antigravity usage response did not include quota groups.");
   }
 
   const geminiGroup =
-    groups.find((group) => /gemini/i.test(group?.name ?? "")) ??
-    groups.find((group) => group?.buckets?.some((bucket) => /^gemini/i.test(bucket?.id ?? "")));
+    groups.find((group) => /gemini/i.test(group?.displayName ?? group?.name ?? "")) ??
+    groups.find((group) => group?.buckets?.some((bucket) => /^gemini/i.test(bucket?.bucketId ?? bucket?.id ?? "")));
 
   const claudeGptGroup =
-    groups.find((group) => /claude|gpt/i.test(group?.name ?? "")) ??
-    groups.find((group) => group?.buckets?.some((bucket) => /^3p/i.test(bucket?.id ?? "")));
+    groups.find((group) => /claude|gpt/i.test(group?.displayName ?? group?.name ?? "")) ??
+    groups.find((group) => group?.buckets?.some((bucket) => /^3p/i.test(bucket?.bucketId ?? bucket?.id ?? "")));
 
   return {
     gemini: geminiGroup ? normalizeAntigravityGroup(geminiGroup, "antigravity-gemini", "G", "Antigravity Gemini", now) : null,
@@ -51,8 +51,8 @@ export function normalizeAntigravityUsage(agyResponse, now = new Date()) {
 
 function normalizeAntigravityGroup(group, limitId, label, title, now) {
   const buckets = Array.isArray(group.buckets) ? group.buckets : [];
-  const fiveHourBucket = buckets.find((bucket) => bucket.window === "5h" || /5h|five hour/i.test(bucket.id ?? bucket.name ?? ""));
-  const weeklyBucket = buckets.find((bucket) => bucket.window === "weekly" || /weekly/i.test(bucket.id ?? bucket.name ?? ""));
+  const fiveHourBucket = buckets.find((bucket) => bucket.window === "5h" || /5h|five hour/i.test(bucket.bucketId ?? bucket.id ?? bucket.displayName ?? bucket.name ?? ""));
+  const weeklyBucket = buckets.find((bucket) => bucket.window === "weekly" || /weekly/i.test(bucket.bucketId ?? bucket.id ?? bucket.displayName ?? bucket.name ?? ""));
 
   const fiveHour = fiveHourBucket ? normalizeAntigravityBucket(fiveHourBucket, FIVE_HOURS_MINS, now) : null;
   const weekly = weeklyBucket ? normalizeAntigravityBucket(weeklyBucket, WEEK_MINS, now) : null;
@@ -61,7 +61,7 @@ function normalizeAntigravityGroup(group, limitId, label, title, now) {
     limitId,
     label,
     title,
-    groupName: group.name ?? title,
+    groupName: group.displayName ?? group.name ?? title,
     fiveHour,
     weekly,
     windows: [fiveHour, weekly].filter(Boolean),
@@ -69,12 +69,16 @@ function normalizeAntigravityGroup(group, limitId, label, title, now) {
 }
 
 function normalizeAntigravityBucket(bucket, durationMins, now) {
-  const fraction = typeof bucket.remaining_fraction === "number" && Number.isFinite(bucket.remaining_fraction)
-    ? bucket.remaining_fraction
+  const rawFraction = typeof bucket.remainingFraction === "number"
+    ? bucket.remainingFraction
+    : bucket.remaining_fraction;
+  const fraction = typeof rawFraction === "number" && Number.isFinite(rawFraction)
+    ? rawFraction
     : null;
   const remainingPercent = fraction === null ? null : clampPercent(fraction * 100);
   const usedPercent = remainingPercent === null ? null : clampPercent(100 - remainingPercent);
-  const parsedDate = bucket.reset_time ? new Date(bucket.reset_time) : null;
+  const rawReset = bucket.resetTime ?? bucket.reset_time;
+  const parsedDate = rawReset ? new Date(rawReset) : null;
   const resetsAt = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
 
   return {

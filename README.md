@@ -122,9 +122,9 @@ Or run this one-liner in Terminal (or let your Agent execute it) — it auto-det
 
 ```sh
 ARCH="$(uname -m)"; [[ "$ARCH" == "x86_64" && "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" == "1" ]] && ARCH="arm64"
-URL="$(curl -fsSL https://api.github.com/repos/FengXiaohub/codex-usage-status/releases/latest | grep -Eo "https://[^\"]+macos-${ARCH}\.zip" | head -n 1)"
+TAG="$(basename "$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/FengXiaohub/codex-usage-status/releases/latest)")"
 TMP_DIR="$(mktemp -d)" && trap 'rm -rf "$TMP_DIR"' EXIT
-curl -fL "$URL" -o "$TMP_DIR/app.zip" && ditto -x -k "$TMP_DIR/app.zip" "$TMP_DIR"
+curl -fL "https://github.com/FengXiaohub/codex-usage-status/releases/download/${TAG}/CodexUsageStatus-${TAG#v}-macos-${ARCH}.zip" -o "$TMP_DIR/app.zip" && ditto -x -k "$TMP_DIR/app.zip" "$TMP_DIR"
 pkill -x CodexUsageStatus 2>/dev/null || true
 rm -rf /Applications/CodexUsageStatus.app && ditto "$TMP_DIR/CodexUsageStatus.app" /Applications/CodexUsageStatus.app
 xattr -cr /Applications/CodexUsageStatus.app && open -n /Applications/CodexUsageStatus.app

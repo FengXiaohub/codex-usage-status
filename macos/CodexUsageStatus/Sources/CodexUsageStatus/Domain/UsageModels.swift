@@ -89,6 +89,7 @@ struct AntigravityQuotaBucket: Decodable, Sendable {
 }
 
 struct ProviderQuotaColumn: Sendable {
+    let provider: TokenProvider
     let shortLabel: String
     let title: String
     let fiveHour: UsageWindow?
@@ -111,9 +112,18 @@ struct CombinedUsageSummary: Sendable {
         codex != nil || gemini != nil || claudeGpt != nil
     }
 
+    func hasAnyUsage(for visibility: QuotaVisibility) -> Bool {
+        columns(for: visibility).contains { $0.isAvailable }
+    }
+
+    func hasAnyError(for visibility: QuotaVisibility) -> Bool {
+        columns(for: visibility).contains { $0.errorDescription != nil }
+    }
+
     var columns: [ProviderQuotaColumn] {
         [
             ProviderQuotaColumn(
+                provider: .codex,
                 shortLabel: "C",
                 title: "Codex",
                 fiveHour: codex?.fiveHour,
@@ -121,6 +131,7 @@ struct CombinedUsageSummary: Sendable {
                 errorDescription: codexError
             ),
             ProviderQuotaColumn(
+                provider: .gemini,
                 shortLabel: "G",
                 title: "Antigravity Gemini",
                 fiveHour: gemini?.fiveHour,
@@ -128,6 +139,7 @@ struct CombinedUsageSummary: Sendable {
                 errorDescription: antigravityError
             ),
             ProviderQuotaColumn(
+                provider: .claudeGpt,
                 shortLabel: "A",
                 title: "Antigravity Claude & GPT",
                 fiveHour: claudeGpt?.fiveHour,
@@ -137,8 +149,16 @@ struct CombinedUsageSummary: Sendable {
         ]
     }
 
+    func columns(for visibility: QuotaVisibility) -> [ProviderQuotaColumn] {
+        columns.filter { visibility.isVisible($0.provider) }
+    }
+
     var menuTitle: String {
-        columns.map { column in
+        menuTitle(for: QuotaVisibility())
+    }
+
+    func menuTitle(for visibility: QuotaVisibility) -> String {
+        columns(for: visibility).map { column in
             guard column.isAvailable else {
                 return "\(column.shortLabel) --"
             }
@@ -147,21 +167,25 @@ struct CombinedUsageSummary: Sendable {
                 parts.append("5h \(fiveHour.remainingPercent)%")
             }
             if let weekly = column.weekly {
-                parts.append("7d \(weekly.remainingPercent)%")
+                parts.append("\(weekly.shortLabel.lowercased()) \(weekly.remainingPercent)%")
             }
             return "\(column.shortLabel) \(parts.joined(separator: " "))"
         }.joined(separator: " | ")
     }
 
     var verboseTitle: String {
-        columns.map { column in
+        verboseTitle(for: QuotaVisibility())
+    }
+
+    func verboseTitle(for visibility: QuotaVisibility) -> String {
+        columns(for: visibility).map { column in
             if column.isAvailable {
                 var parts: [String] = []
                 if let fiveHour = column.fiveHour {
                     parts.append("5-hour \(fiveHour.remainingPercent)%")
                 }
                 if let weekly = column.weekly {
-                    parts.append("weekly \(weekly.remainingPercent)%")
+                    parts.append("\(weekly.longLabel.lowercased()) \(weekly.remainingPercent)%")
                 }
                 return "[\(column.shortLabel)] \(column.title): \(parts.joined(separator: " · "))"
             } else if let err = column.errorDescription {
@@ -172,8 +196,8 @@ struct CombinedUsageSummary: Sendable {
         }.joined(separator: "\n")
     }
 
-    func tooltip(formatter: DateFormatter) -> String {
-        columns.map { column in
+    func tooltip(formatter: DateFormatter, visibility: QuotaVisibility = QuotaVisibility()) -> String {
+        columns(for: visibility).map { column in
             var lines = ["[\(column.shortLabel)] \(column.title)"]
             if column.isAvailable {
                 if let fiveHour = column.fiveHour {
@@ -182,7 +206,7 @@ struct CombinedUsageSummary: Sendable {
                 }
                 if let weekly = column.weekly {
                     let reset = weekly.resetsAt.map { formatter.string(from: $0) } ?? "unknown"
-                    lines.append("  7D remaining: \(weekly.remainingPercent)% · resets \(reset)")
+                    lines.append("  \(weekly.shortLabel) remaining: \(weekly.remainingPercent)% · resets \(reset)")
                 }
             } else if let err = column.errorDescription {
                 lines.append("  Unavailable: \(err)")
@@ -226,7 +250,11 @@ struct UsageSummary: Sendable {
 
         let windows = [snapshot.primary, snapshot.secondary].compactMap { $0 }.map(UsageWindow.init)
         let fiveHour = windows.first { approximately($0.windowDurationMins, 300) }
-        let weekly = windows.first { approximately($0.windowDurationMins, 10080) } ?? windows.first
+        // Exclude the 5-hour window so a 30-day secondary window is never shadowed by `windows.first`.
+        let longWindows = windows.filter { !approximately($0.windowDurationMins, 300) }
+        let weekly = longWindows.first { approximately($0.windowDurationMins, 10080) }
+            ?? longWindows.max { ($0.windowDurationMins ?? 0) < ($1.windowDurationMins ?? 0) }
+            ?? fiveHour
 
         guard let weekly else {
             throw FetchError.invalidOutput
@@ -237,6 +265,18 @@ struct UsageSummary: Sendable {
         self.planType = snapshot.planType
         self.fiveHour = fiveHour
         self.weekly = weekly
+    }
+
+    /// Rolls any cached window whose reset timestamp has already passed back to 100% (`resetsAt: nil`),
+    /// preventing stale low-quota alerts while a companion desktop app is closed across a reset boundary.
+    func rollingOverExpiredWindows(at now: Date = Date()) -> UsageSummary {
+        UsageSummary(
+            shortLabel: shortLabel,
+            title: title,
+            planType: planType,
+            fiveHour: fiveHour?.rollingOverIfExpired(at: now),
+            weekly: weekly.rollingOverIfExpired(at: now)
+        )
     }
 
     static func parseAntigravityGroups(from envelope: AntigravityUsageEnvelope) throws -> (gemini: UsageSummary?, claudeGpt: UsageSummary?) {
@@ -293,35 +333,18 @@ struct UsageSummary: Sendable {
             weekly: weekly
         )
     }
-
-    var menuTitle: String {
-        if let fiveHour {
-            return "5h \(fiveHour.remainingPercent)% 7d \(weekly.remainingPercent)%"
-        }
-        return "7d \(weekly.remainingPercent)%"
-    }
-
-    var verboseTitle: String {
-        if let fiveHour {
-            return "\(title) usage: 5-hour \(fiveHour.remainingPercent)% · weekly \(weekly.remainingPercent)%"
-        }
-        return "\(title) usage: weekly \(weekly.remainingPercent)%"
-    }
-
-    func tooltip(formatter: DateFormatter) -> String {
-        let weeklyReset = weekly.resetsAt.map { formatter.string(from: $0) } ?? "unknown"
-        if let fiveHour {
-            let fiveHourReset = fiveHour.resetsAt.map { formatter.string(from: $0) } ?? "unknown"
-            return "\(title) usage\n5-hour remaining: \(fiveHour.remainingPercent)% · resets \(fiveHourReset)\nWeekly remaining: \(weekly.remainingPercent)% · resets \(weeklyReset)"
-        }
-        return "\(title) usage\nWeekly remaining: \(weekly.remainingPercent)% · resets \(weeklyReset)"
-    }
 }
 
 struct UsageWindow: Sendable {
     let remainingPercent: Int
     let windowDurationMins: Double?
     let resetsAt: Date?
+
+    init(remainingPercent: Int, windowDurationMins: Double?, resetsAt: Date?) {
+        self.remainingPercent = remainingPercent
+        self.windowDurationMins = windowDurationMins
+        self.resetsAt = resetsAt
+    }
 
     init(_ window: RateLimitWindow) {
         let used = min(100, max(0, window.usedPercent ?? 0))
@@ -334,25 +357,62 @@ struct UsageWindow: Sendable {
         let fraction = min(1.0, max(0.0, antigravityBucket.remainingFraction ?? 0))
         remainingPercent = min(100, max(0, Int((fraction * 100).rounded())))
         windowDurationMins = durationMins
-        resetsAt = antigravityBucket.resetTime.flatMap(Self.parseISO8601Date)
+        resetsAt = antigravityBucket.resetTime.flatMap { ISO8601Parser.shared.parse($0) }
     }
 
-    private static func parseISO8601Date(_ raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) {
-            return date
+    func rollingOverIfExpired(at now: Date, graceSeconds: TimeInterval = 60) -> UsageWindow {
+        guard let resetsAt, resetsAt.timeIntervalSince(now) < -graceSeconds else {
+            return self
         }
-        let standard = ISO8601DateFormatter()
-        standard.formatOptions = [.withInternetDateTime]
-        return standard.date(from: raw)
+        return UsageWindow(remainingPercent: 100, windowDurationMins: windowDurationMins, resetsAt: nil)
     }
 
-    func displayText(formatter: DateFormatter) -> String {
-        guard let resetsAt else {
-            return "\(remainingPercent)% remaining, reset unknown"
+    /// Short label derived from the real window length, e.g. "5H", "7D" or "30D".
+    var shortLabel: String {
+        guard let mins = windowDurationMins, mins > 0 else {
+            return "7D"
         }
-        return "\(remainingPercent)% remaining, resets \(formatter.string(from: resetsAt))"
+        if approximately(mins, 300) {
+            return "5H"
+        }
+        if mins >= 1440 {
+            return "\(Int((mins / 1440).rounded()))D"
+        }
+        return "\(max(1, Int((mins / 60).rounded())))H"
+    }
+
+    /// Human readable window name for tooltips, e.g. "5-hour", "Weekly", "30-day".
+    var longLabel: String {
+        switch shortLabel {
+        case "5H": return "5-hour"
+        case "7D": return "Weekly"
+        default:
+            let label = shortLabel
+            let number = label.dropLast()
+            return label.hasSuffix("D") ? "\(number)-day" : "\(number)-hour"
+        }
+    }
+}
+
+private final class ISO8601Parser: @unchecked Sendable {
+    static let shared = ISO8601Parser()
+
+    private let lock = NSLock()
+    private let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private let standard: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    func parse(_ raw: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return fractional.date(from: raw) ?? standard.date(from: raw)
     }
 }
 

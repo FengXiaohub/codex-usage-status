@@ -21,11 +21,12 @@ Generated output is intentionally kept out of git:
 
 `macos/CodexUsageStatus/Sources/CodexUsageStatus/` is split by responsibility:
 
-- `main.swift`: process entry point and `--once` diagnostic mode.
-- `App/`: AppKit status item lifecycle, menu actions, refresh scheduling, and configuration.
-- `Codex/`: local `codex app-server --listen stdio://` JSON-RPC client.
-- `Domain/`: decoded rate-limit response models and remaining-quota normalization.
-- `UI/`: menu-bar badge styles and drawing code.
+- `AppEntry.swift`: `@main` process entry point and `--once` / `--tokens` diagnostic modes.
+- `App/`: AppKit status item lifecycle, menu actions, low-quota notification tracker, refresh scheduling, and configuration.
+- `Codex/`: local `codex app-server --listen stdio://` JSON-RPC client and Antigravity loopback daemon reader.
+- `Domain/`: decoded quota models, remaining-quota normalization, and token report models.
+- `Tokens/`: zero-copy incremental token log scanner.
+- `UI/`: menu-bar badge styles, quota visibility, and drawing code.
 
 The intended dependency direction is:
 

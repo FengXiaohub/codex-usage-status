@@ -3,38 +3,66 @@ import Darwin
 import Foundation
 
 enum CodexUsageFetcher {
-    static func fetchCombined() async throws -> CombinedUsageSummary {
-        async let codexTask: Result<UsageSummary, Error> = Task.detached(priority: .utility) {
-            Result { try fetchSync() }
+    static func fetchCombined(visibility: QuotaVisibility = QuotaVisibility()) async throws -> CombinedUsageSummary {
+        let includeCodex = visibility.includesCodex
+        let includeAntigravity = visibility.includesAntigravity
+
+        async let codexTask: Result<UsageSummary, Error>? = Task.detached(priority: .utility) {
+            guard includeCodex else { return nil }
+            return Result { try fetchSync() }
         }.value
-        async let agyTask: Result<(gemini: UsageSummary?, claudeGpt: UsageSummary?), Error> = Task.detached(priority: .utility) {
-            Result { try fetchAntigravitySync() }
+        async let agyTask: Result<(gemini: UsageSummary?, claudeGpt: UsageSummary?), Error>? = Task.detached(priority: .utility) {
+            guard includeAntigravity else { return nil }
+            return Result { try fetchAntigravitySync() }
         }.value
 
-        let codexResult = await codexTask
-        let agyResult = await agyTask
+        return try assembleCombined(
+            codexResult: await codexTask,
+            agyResult: await agyTask,
+            visibility: visibility
+        )
+    }
 
+    static func fetchCombinedSync() throws -> CombinedUsageSummary {
+        let codexResult = Result { try fetchSync() }
+        let agyResult = Result { try fetchAntigravitySync() }
+        return try assembleCombined(
+            codexResult: codexResult,
+            agyResult: agyResult,
+            visibility: QuotaVisibility()
+        )
+    }
+
+    private static func assembleCombined(
+        codexResult: Result<UsageSummary, Error>?,
+        agyResult: Result<(gemini: UsageSummary?, claudeGpt: UsageSummary?), Error>?,
+        visibility: QuotaVisibility
+    ) throws -> CombinedUsageSummary {
         var codexUsage: UsageSummary?
         var codexError: String?
-        switch codexResult {
-        case .success(let summary):
-            codexUsage = summary
-        case .failure(let error):
-            codexError = error.localizedDescription
+        if let codexResult {
+            switch codexResult {
+            case .success(let summary):
+                codexUsage = summary
+            case .failure(let error):
+                codexError = error.localizedDescription
+            }
         }
 
         var geminiUsage: UsageSummary?
         var claudeGptUsage: UsageSummary?
         var agyError: String?
-        switch agyResult {
-        case .success(let groups):
-            geminiUsage = groups.gemini
-            claudeGptUsage = groups.claudeGpt
-        case .failure(let error):
-            if case FetchError.antigravityNotRunning = error {
-                agyError = nil
-            } else {
-                agyError = error.localizedDescription
+        if let agyResult {
+            switch agyResult {
+            case .success(let groups):
+                geminiUsage = groups.gemini
+                claudeGptUsage = groups.claudeGpt
+            case .failure(let error):
+                if case FetchError.antigravityNotRunning = error {
+                    agyError = nil
+                } else {
+                    agyError = error.localizedDescription
+                }
             }
         }
 
@@ -46,58 +74,13 @@ enum CodexUsageFetcher {
             antigravityError: agyError
         )
 
-        guard combined.hasAnyUsage else {
+        if !combined.hasAnyUsage(for: visibility), combined.hasAnyError(for: visibility) {
             throw FetchError.allProvidersUnavailable(
-                codex: codexError ?? "unavailable",
-                antigravity: agyError ?? "unavailable"
+                codex: visibility.includesCodex ? (codexError ?? "unavailable") : "hidden",
+                antigravity: visibility.includesAntigravity ? (agyError ?? "unavailable") : "hidden"
             )
         }
         return combined
-    }
-
-    static func fetchCombinedSync() throws -> CombinedUsageSummary {
-        var codexUsage: UsageSummary?
-        var codexError: String?
-        do {
-            codexUsage = try fetchSync()
-        } catch {
-            codexError = error.localizedDescription
-        }
-
-        var geminiUsage: UsageSummary?
-        var claudeGptUsage: UsageSummary?
-        var agyError: String?
-        do {
-            let groups = try fetchAntigravitySync()
-            geminiUsage = groups.gemini
-            claudeGptUsage = groups.claudeGpt
-        } catch FetchError.antigravityNotRunning {
-            agyError = nil
-        } catch {
-            agyError = error.localizedDescription
-        }
-
-        let combined = CombinedUsageSummary(
-            codex: codexUsage,
-            gemini: geminiUsage,
-            claudeGpt: claudeGptUsage,
-            codexError: codexError,
-            antigravityError: agyError
-        )
-
-        guard combined.hasAnyUsage else {
-            throw FetchError.allProvidersUnavailable(
-                codex: codexError ?? "unavailable",
-                antigravity: agyError ?? "unavailable"
-            )
-        }
-        return combined
-    }
-
-    static func fetch() async throws -> UsageSummary {
-        try await Task.detached(priority: .utility) {
-            try fetchSync()
-        }.value
     }
 
     static func fetchSync() throws -> UsageSummary {
@@ -182,11 +165,12 @@ enum CodexUsageFetcher {
             request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
             request.setValue(daemon.csrfToken, forHTTPHeaderField: "x-antigravity-csrf-token")
 
+            let requestTimeout = AppConfig.antigravityRequestTimeoutSeconds
             let config = URLSessionConfiguration.ephemeral
             // Force direct loopback to 127.0.0.1 so corporate VPN / PAC / system proxies never intercept local IPC.
             config.connectionProxyDictionary = [:]
-            config.timeoutIntervalForRequest = 8
-            config.timeoutIntervalForResource = 10
+            config.timeoutIntervalForRequest = TimeInterval(max(1, requestTimeout - 2))
+            config.timeoutIntervalForResource = TimeInterval(requestTimeout)
 
             let session = URLSession(configuration: config)
             defer { session.finishTasksAndInvalidate() }
@@ -200,9 +184,9 @@ enum CodexUsageFetcher {
             }
             task.resume()
 
-            if semaphore.wait(timeout: .now() + .seconds(10)) == .timedOut {
+            if semaphore.wait(timeout: .now() + .seconds(requestTimeout)) == .timedOut {
                 task.cancel()
-                lastError = FetchError.timeout
+                lastError = FetchError.timeout(seconds: requestTimeout)
                 continue
             }
 
@@ -218,7 +202,13 @@ enum CodexUsageFetcher {
                 continue
             }
 
-            return try JSONDecoder().decode(AntigravityUsageEnvelope.self, from: data)
+            do {
+                return try JSONDecoder().decode(AntigravityUsageEnvelope.self, from: data)
+            } catch {
+                // Try the next live daemon instead of failing the whole Antigravity read.
+                lastError = error
+                continue
+            }
         }
 
         throw lastError
@@ -251,12 +241,12 @@ enum CodexUsageFetcher {
         }
 
         let responseBox = ResponseBox()
-        let errorBox = DataAccumulatorBox()
         standardOutput.fileHandleForReading.readabilityHandler = { handle in
             responseBox.append(handle.availableData)
         }
+        // stderr is drained (so the child never blocks on a full pipe) and discarded.
         standardError.fileHandleForReading.readabilityHandler = { handle in
-            errorBox.append(handle.availableData)
+            _ = handle.availableData
         }
 
         do {
@@ -267,8 +257,9 @@ enum CodexUsageFetcher {
             throw error
         }
 
+        let clientVersion = AppConfig.appVersion.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
         let requestLines = [
-            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":"0.4.2"},"capabilities":{"experimentalApi":true}}}"#,
+            #"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"codex_usage_status_menubar","title":"Codex Usage Status","version":""# + clientVersion + #""},"capabilities":{"experimentalApi":true}}}"#,
             #"{"method":"initialized"}"#,
             #"{"method":"account/rateLimits/read","id":2}"#
         ].joined(separator: "\n") + "\n"
@@ -283,19 +274,20 @@ enum CodexUsageFetcher {
             throw FetchError.appServerError
         }
 
-        if responseBox.wait(timeout: .now() + AppConfig.appServerTimeout) == .timedOut {
+        if responseBox.wait(timeout: .now() + .seconds(AppConfig.appServerTimeoutSeconds)) == .timedOut {
             standardOutput.fileHandleForReading.readabilityHandler = nil
             standardError.fileHandleForReading.readabilityHandler = nil
             try? standardInput.fileHandleForWriting.close()
             terminateProcess(process, finished: finished)
-            throw FetchError.timeout
+            throw FetchError.timeout(seconds: AppConfig.appServerTimeoutSeconds)
         }
 
         standardOutput.fileHandleForReading.readabilityHandler = nil
         standardError.fileHandleForReading.readabilityHandler = nil
         try? standardInput.fileHandleForWriting.close()
         terminateProcess(process, finished: finished)
-        _ = standardError.fileHandleForReading.readDataToEndOfFile()
+        // Do not block reading stderr to EOF here: a descendant process that inherited the pipe
+        // could keep it open indefinitely and stall every later refresh.
 
         switch responseBox.result() {
         case .success(let response):
@@ -480,24 +472,6 @@ final class ResponseBox: @unchecked Sendable {
     }
 }
 
-final class DataAccumulatorBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var buffer = Data()
-
-    func append(_ data: Data) {
-        guard !data.isEmpty else { return }
-        lock.lock()
-        buffer.append(data)
-        lock.unlock()
-    }
-
-    func data() -> Data {
-        lock.lock()
-        defer { lock.unlock() }
-        return buffer
-    }
-}
-
 final class HTTPResultBox: @unchecked Sendable {
     private let lock = NSLock()
     private var data: Data?
@@ -521,11 +495,9 @@ final class HTTPResultBox: @unchecked Sendable {
 
 enum FetchError: LocalizedError {
     case codexNotFound(String)
-    case antigravityNotFound(String)
     case antigravityNotRunning
     case allProvidersUnavailable(codex: String, antigravity: String)
-    case timeout
-    case appServerExited(Int)
+    case timeout(seconds: Int)
     case appServerError
     case invalidOutput
     case missingRateLimitResponse
@@ -534,16 +506,12 @@ enum FetchError: LocalizedError {
         switch self {
         case .codexNotFound(let path):
             return "Codex binary not found at \(path)"
-        case .antigravityNotFound(let path):
-            return "Antigravity CLI (agy) binary not found at \(path)"
         case .antigravityNotRunning:
             return "Antigravity desktop app is not running"
         case .allProvidersUnavailable(let codex, let antigravity):
             return "Codex (\(codex)); Antigravity (\(antigravity))"
-        case .timeout:
-            return "Local usage query did not respond within 20 seconds"
-        case .appServerExited(let status):
-            return "Codex app-server exited with status \(status)"
+        case .timeout(let seconds):
+            return "Local usage query did not respond within \(seconds) seconds"
         case .appServerError:
             return "Codex app-server returned an error"
         case .invalidOutput:

@@ -7,14 +7,6 @@ enum AppConfig {
         "/Applications/ChatGPT.app/Contents/Resources/codex",
         "/Applications/Codex.app/Contents/Resources/codex",
     ]
-    static var defaultAgyPaths: [String] {
-        [
-            NSHomeDirectory() + "/.local/bin/agy",
-            "/Applications/Antigravity.app/Contents/Resources/bin/agy",
-            "/usr/local/bin/agy",
-            "/opt/homebrew/bin/agy",
-        ]
-    }
     static var watchedClientPaths: [String] {
         [
             "/Applications/Antigravity.app/Contents/Info.plist",
@@ -29,8 +21,20 @@ enum AppConfig {
     static let errorRetryInterval: TimeInterval = 120
     static let wakeRefreshDelay: TimeInterval = 5
     static let maxStaleFailuresBeforeError = 2
-    static let appServerTimeout: DispatchTimeInterval = .seconds(20)
-    static let antigravityTimeout: DispatchTimeInterval = .seconds(35)
+    static let appServerTimeoutSeconds = 20
+    static let antigravityRequestTimeoutSeconds = 10
+    /// A refresh that has not finished after this long is treated as stuck and superseded.
+    static let refreshWatchdogInterval: TimeInterval = 90
+    /// Token statistics cover today plus the previous days up to this many calendar days.
+    static let tokenWindowDays = 7
+    /// Opening the menu rescans token logs at most this often.
+    static let tokenRescanThrottle: TimeInterval = 15
+    /// Remaining quota strictly below this percentage is highlighted in red in the menu bar.
+    static let lowQuotaRedThresholdPercent = 15
+
+    static var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
+    }
 }
 
 func configuredRefreshInterval() -> TimeInterval {

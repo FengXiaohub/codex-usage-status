@@ -30,6 +30,14 @@ const DEFAULT_AGY_PATHS = [
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+const PACKAGE_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version ?? "dev";
+  } catch {
+    return "dev";
+  }
+})();
+
 function resolveExecutable(envValue, candidates) {
   if (envValue) {
     return envValue;
@@ -121,7 +129,7 @@ export class AppServerClient {
       clientInfo: {
         name: "codex_usage_status",
         title: "Codex Usage Status",
-        version: "0.4.2",
+        version: PACKAGE_VERSION,
       },
       capabilities: {
         experimentalApi: true,

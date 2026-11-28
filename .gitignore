@@ -2,4 +2,6 @@
 node_modules/
 dist/
 macos/CodexUsageStatus/.build/
+.phase1-validation-build/
+.codebuddy/
 *.log

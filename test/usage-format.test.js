@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { redactSensitive } from "../src/app-server-client.js";
-import { formatMenuTitle, normalizeAntigravityUsage, normalizeUsage } from "../src/usage-format.js";
+import { formatMenuTitle, formatTextStatus, normalizeAntigravityUsage, normalizeUsage, windowShortLabel } from "../src/usage-format.js";
 
 test("normalizes Antigravity Gemini and Claude/GPT quota groups", () => {
   const agy = normalizeAntigravityUsage({
@@ -109,6 +109,27 @@ test("falls back to backward-compatible single snapshot", () => {
 
   assert.equal(usage.fiveHour.remainingPercent, 100);
   assert.equal(usage.weekly.remainingPercent, 0);
+});
+
+test("labels a single Codex 30-day window as 30d instead of 5h", () => {
+  const usage = normalizeUsage({
+    rateLimitsByLimitId: {
+      codex: {
+        limitId: "codex",
+        primary: {
+          usedPercent: 12,
+          windowDurationMins: 43200,
+          resetsAt: 1780000000,
+        },
+      },
+    },
+  });
+
+  assert.equal(usage.fiveHour, null);
+  assert.equal(usage.weekly.remainingPercent, 88);
+  assert.equal(windowShortLabel(usage.weekly), "30D");
+  assert.equal(formatMenuTitle(usage), "Codex 30d 88%");
+  assert.match(formatTextStatus(usage), /30-day remaining: 88%/);
 });
 
 test("redacts sensitive app-server stderr snippets", () => {

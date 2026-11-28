@@ -7,20 +7,16 @@ enum UsageBadgeRenderer {
     private static let singleRingImageSize = NSSize(width: 46, height: 24)
     private static let singleReadoutImageSize = NSSize(width: 58, height: 24)
     private static let proQuotaAndResetTimesFontSize: CGFloat = 12.6
+    /// High-contrast crimson pill fill (> 5:1 contrast with white text on both light and dark menu bars).
+    private static let lowQuotaPillColor = NSColor(srgbRed: 0.85, green: 0.12, blue: 0.15, alpha: 0.96)
 
-    static func statusItemLength(for style: BadgeStyle) -> CGFloat {
-        switch style {
-        case .doubleRing:
-            return 90
-        case .largeReadout:
-            return 90
-        case .quotaAndResetTimes:
-            return 1
-        }
-    }
-
-    static func image(for combined: CombinedUsageSummary, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        let columnImages = combined.columns.map { column -> NSImage in
+    static func image(
+        for combined: CombinedUsageSummary,
+        style: BadgeStyle,
+        visibility: QuotaVisibility = QuotaVisibility(),
+        appearance: NSAppearance
+    ) -> NSImage {
+        let columnImages = combined.columns(for: visibility).map { column -> NSImage in
             if let fiveHour = column.fiveHour, let weekly = column.weekly {
                 let summary = UsageSummary(
                     shortLabel: column.shortLabel,
@@ -56,7 +52,7 @@ enum UsageBadgeRenderer {
     }
 
     static func image(for usage: UsageSummary, prefix: String? = nil, style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        let weekly = BadgeValue(label: "7D", percent: usage.weekly.remainingPercent, resetDate: usage.weekly.resetsAt)
+        let weekly = BadgeValue(label: usage.weekly.shortLabel, percent: usage.weekly.remainingPercent, resetDate: usage.weekly.resetsAt)
         guard let fiveHour = usage.fiveHour else {
             let base: NSImage
             switch style {
@@ -73,26 +69,26 @@ enum UsageBadgeRenderer {
             return base
         }
 
+        let left = BadgeValue(label: "5H", percent: fiveHour.remainingPercent, resetDate: fiveHour.resetsAt)
         if let prefix {
             return renderPrefixedColumn(
                 prefix: prefix,
                 style: style,
-                left: BadgeValue(label: "5H", percent: fiveHour.remainingPercent, resetDate: fiveHour.resetsAt),
+                left: left,
                 right: weekly,
                 appearance: appearance,
                 forcedColor: nil
             )
         }
-
-        return render(style: style,
-            left: BadgeValue(label: "5H", percent: fiveHour.remainingPercent, resetDate: fiveHour.resetsAt),
-            right: weekly,
-            appearance: appearance
-        )
+        return render(style: style, left: left, right: weekly, appearance: appearance)
     }
 
-    static func placeholderImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        let columns = ["C", "G", "A"].map { prefix in
+    static func placeholderImage(
+        style: BadgeStyle,
+        visibility: QuotaVisibility = QuotaVisibility(),
+        appearance: NSAppearance
+    ) -> NSImage {
+        let columns = visibility.visibleProviders.map(\.shortLabel).map { prefix in
             renderPrefixedColumn(
                 prefix: prefix,
                 style: style,
@@ -105,8 +101,12 @@ enum UsageBadgeRenderer {
         return combineColumnsHorizontally(columns, appearance: appearance)
     }
 
-    static func errorImage(style: BadgeStyle, appearance: NSAppearance) -> NSImage {
-        let columns = ["C", "G", "A"].map { prefix in
+    static func errorImage(
+        style: BadgeStyle,
+        visibility: QuotaVisibility = QuotaVisibility(),
+        appearance: NSAppearance
+    ) -> NSImage {
+        let columns = visibility.visibleProviders.map(\.shortLabel).map { prefix in
             renderPrefixedColumn(
                 prefix: prefix,
                 style: style,
@@ -117,6 +117,15 @@ enum UsageBadgeRenderer {
             )
         }
         return combineColumnsHorizontally(columns, appearance: appearance)
+    }
+
+    private static func makeImage(size: NSSize, appearance: NSAppearance, draw: @escaping () -> Void) -> NSImage {
+        let image = NSImage(size: size, flipped: false) { _ in
+            appearance.performAsCurrentDrawingAppearance(draw)
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     private static func renderPrefixedColumn(
@@ -149,11 +158,7 @@ enum UsageBadgeRenderer {
             width: prefixWidth + prefixGap + contentImage.size.width,
             height: contentImage.size.height
         )
-        let image = NSImage(size: totalSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-
-        appearance.performAsCurrentDrawingAppearance {
+        return makeImage(size: totalSize, appearance: appearance) {
             drawString(
                 prefix,
                 in: NSRect(x: 0, y: 4.5, width: prefixWidth, height: 15),
@@ -172,9 +177,6 @@ enum UsageBadgeRenderer {
                 )
             )
         }
-
-        image.isTemplate = false
-        return image
     }
 
     private static func combineColumnsHorizontally(_ columns: [NSImage], appearance: NSAppearance) -> NSImage {
@@ -186,11 +188,7 @@ enum UsageBadgeRenderer {
         let totalWidth = columns.reduce(CGFloat(0)) { $0 + $1.size.width } + gap * CGFloat(max(0, columns.count - 1))
         let maxHeight = columns.map(\.size.height).max() ?? quotaAndResetTimesImageHeight
         let imageSize = NSSize(width: ceil(totalWidth), height: maxHeight)
-        let combined = NSImage(size: imageSize)
-        combined.lockFocus()
-        defer { combined.unlockFocus() }
-
-        appearance.performAsCurrentDrawingAppearance {
+        return makeImage(size: imageSize, appearance: appearance) {
             var currentX: CGFloat = 0
             for (index, columnImage) in columns.enumerated() {
                 columnImage.draw(
@@ -214,9 +212,6 @@ enum UsageBadgeRenderer {
                 }
             }
         }
-
-        combined.isTemplate = false
-        return combined
     }
 
     private static func render(
@@ -244,79 +239,107 @@ enum UsageBadgeRenderer {
     ) -> NSImage {
         let leftPercent = left.percent.map { "\($0)%" } ?? left.centerText
         let rightPercent = right.percent.map { "\($0)%" } ?? right.centerText
-        let fiveHourText = "\(leftPercent)·\(resetText(for: left.resetDate, includeWeekday: false))"
-        let weeklyText = "\(rightPercent)·\(resetText(for: right.resetDate, includeWeekday: true))"
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 10.2, weight: .semibold)
-        let attributes: [NSAttributedString.Key: Any] = [.font: font]
-        let width = ceil(max(
-            (fiveHourText as NSString).size(withAttributes: attributes).width,
-            (weeklyText as NSString).size(withAttributes: attributes).width
-        ) + 1)
-        let imageSize = NSSize(width: width, height: quotaAndResetTimesImageHeight)
-        let image = NSImage(size: imageSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
+        let fiveHourText = "\(leftPercent)·\(ResetFormatter.shared.text(for: left.resetDate, includeWeekday: false))"
+        let weeklyText = "\(rightPercent)·\(ResetFormatter.shared.text(for: right.resetDate, includeWeekday: true))"
 
-        appearance.performAsCurrentDrawingAppearance {
-            drawString(
-                fiveHourText,
-                in: NSRect(x: 0, y: 12, width: imageSize.width, height: 11),
-                fontSize: 10.2,
-                weight: .semibold,
-                alpha: 0.98,
-                alignment: .left,
-                color: forcedColor
-            )
-            drawString(
-                weeklyText,
-                in: NSRect(x: 0, y: 1, width: imageSize.width, height: 11),
-                fontSize: 10.2,
-                weight: .semibold,
-                alpha: 0.98,
-                alignment: .left,
-                color: forcedColor
-            )
+        let leftIsAlert = forcedColor == nil && isLowQuota(left.percent)
+        let rightIsAlert = forcedColor == nil && isLowQuota(right.percent)
+        let pillPadX: CGFloat = 3.5
+
+        let leftWidth = rowWidth(for: fiveHourText, fontSize: leftIsAlert ? 9.8 : 10.2, weight: leftIsAlert ? .bold : .semibold, padX: leftIsAlert ? pillPadX : 0)
+        let rightWidth = rowWidth(for: weeklyText, fontSize: rightIsAlert ? 9.8 : 10.2, weight: rightIsAlert ? .bold : .semibold, padX: rightIsAlert ? pillPadX : 0)
+        let imageSize = NSSize(width: max(leftWidth, rightWidth), height: quotaAndResetTimesImageHeight)
+
+        return makeImage(size: imageSize, appearance: appearance) {
+            if leftIsAlert {
+                drawAlertPillRow(fiveHourText, y: 12.5, height: 10.8, fontSize: 9.8, padX: pillPadX, cornerRadius: 3.2)
+            } else {
+                drawString(
+                    fiveHourText,
+                    in: NSRect(x: 0, y: 12, width: imageSize.width, height: 11),
+                    fontSize: 10.2,
+                    weight: .semibold,
+                    alpha: 0.98,
+                    alignment: .left,
+                    color: forcedColor
+                )
+            }
+
+            if rightIsAlert {
+                drawAlertPillRow(weeklyText, y: 0.8, height: 10.8, fontSize: 9.8, padX: pillPadX, cornerRadius: 3.2)
+            } else {
+                drawString(
+                    weeklyText,
+                    in: NSRect(x: 0, y: 1, width: imageSize.width, height: 11),
+                    fontSize: 10.2,
+                    weight: .semibold,
+                    alpha: 0.98,
+                    alignment: .left,
+                    color: forcedColor
+                )
+            }
         }
-
-        image.isTemplate = false
-        return image
     }
 
     private static func renderProQuotaAndResetTimes(value: BadgeValue, appearance: NSAppearance) -> NSImage {
         let percent = value.percent.map { "\($0)%" } ?? value.centerText
-        let text = "\(percent)·\(resetText(for: value.resetDate, includeWeekday: true))"
-        let font = NSFont.monospacedDigitSystemFont(ofSize: proQuotaAndResetTimesFontSize, weight: .semibold)
-        let attributes: [NSAttributedString.Key: Any] = [.font: font]
-        let width = ceil((text as NSString).size(withAttributes: attributes).width + 1)
+        let text = "\(percent)·\(ResetFormatter.shared.text(for: value.resetDate, includeWeekday: true))"
+        let isAlert = isLowQuota(value.percent)
+        let pillPadX: CGFloat = 4.5
+        let fontSize: CGFloat = isAlert ? 12.0 : proQuotaAndResetTimesFontSize
+        let width = rowWidth(for: text, fontSize: fontSize, weight: isAlert ? .bold : .semibold, padX: isAlert ? pillPadX : 0)
         let imageSize = NSSize(width: width, height: quotaAndResetTimesImageHeight)
-        let image = NSImage(size: imageSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
 
-        appearance.performAsCurrentDrawingAppearance {
-            drawString(
-                text,
-                in: NSRect(x: 0, y: 4, width: imageSize.width, height: 16),
-                fontSize: proQuotaAndResetTimesFontSize,
-                weight: .semibold,
-                alpha: 0.98,
-                alignment: .left
-            )
+        return makeImage(size: imageSize, appearance: appearance) {
+            if isAlert {
+                drawAlertPillRow(text, y: 4.2, height: 15.6, fontSize: fontSize, padX: pillPadX, cornerRadius: 4.2)
+            } else {
+                drawString(
+                    text,
+                    in: NSRect(x: 0, y: 4, width: imageSize.width, height: 16),
+                    fontSize: fontSize,
+                    weight: .semibold,
+                    alpha: 0.98,
+                    alignment: .left
+                )
+            }
         }
+    }
 
-        image.isTemplate = false
-        return image
+    private static func rowWidth(for text: String, fontSize: CGFloat, weight: NSFont.Weight, padX: CGFloat) -> CGFloat {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
+        let textWidth = (text as NSString).size(withAttributes: [.font: font]).width
+        return ceil(textWidth + padX * 2 + 1)
+    }
+
+    private static func drawAlertPillRow(
+        _ text: String,
+        y: CGFloat,
+        height: CGFloat,
+        fontSize: CGFloat,
+        padX: CGFloat,
+        cornerRadius: CGFloat
+    ) {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .bold)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white,
+        ]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+        let pillRect = NSRect(x: 0, y: y, width: ceil(textSize.width + padX * 2), height: height)
+        let pillPath = NSBezierPath(roundedRect: pillRect, xRadius: cornerRadius, yRadius: cornerRadius)
+        lowQuotaPillColor.setFill()
+        pillPath.fill()
+
+        let textOrigin = NSPoint(
+            x: pillRect.minX + (pillRect.width - textSize.width) / 2,
+            y: pillRect.midY - textSize.height / 2
+        )
+        (text as NSString).draw(at: textOrigin, withAttributes: attributes)
     }
 
     private static func renderSingleRing(value: BadgeValue, appearance: NSAppearance) -> NSImage {
-        let image = NSImage(size: singleRingImageSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-
-        appearance.performAsCurrentDrawingAppearance {
-            let rect = NSRect(origin: .zero, size: singleRingImageSize)
-            NSColor.clear.setFill()
-            rect.fill()
+        makeImage(size: singleRingImageSize, appearance: appearance) {
             drawLabeledRing(
                 value: value,
                 labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16),
@@ -324,20 +347,10 @@ enum UsageBadgeRenderer {
                 forcedColor: nil
             )
         }
-
-        image.isTemplate = false
-        return image
     }
 
     private static func renderSingleReadout(value: BadgeValue, appearance: NSAppearance) -> NSImage {
-        let image = NSImage(size: singleReadoutImageSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-
-        appearance.performAsCurrentDrawingAppearance {
-            let rect = NSRect(origin: .zero, size: singleReadoutImageSize)
-            NSColor.clear.setFill()
-            rect.fill()
+        makeImage(size: singleReadoutImageSize, appearance: appearance) {
             drawReadoutGroup(
                 value: value,
                 labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16),
@@ -347,33 +360,6 @@ enum UsageBadgeRenderer {
                 numberFontSize: 15
             )
         }
-
-        image.isTemplate = false
-        return image
-    }
-
-    private static func resetText(for date: Date?, includeWeekday: Bool) -> String {
-        guard let date else {
-            return "--"
-        }
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.locale = Locale.current
-        timeFormatter.dateFormat = "HH:mm"
-        let time = timeFormatter.string(from: date)
-
-        if includeWeekday {
-            let weekdayFormatter = DateFormatter()
-            let usesChinese = Locale.current.language.languageCode?.identifier == "zh"
-            weekdayFormatter.locale = Locale(identifier: usesChinese ? "zh_CN" : "en_US_POSIX")
-            weekdayFormatter.dateFormat = "EEE"
-            return "\(weekdayFormatter.string(from: date))\(time)"
-        }
-
-        if Calendar.current.isDateInTomorrow(date) {
-            return Locale.current.language.languageCode?.identifier == "zh" ? "明天\(time)" : "Tomorrow \(time)"
-        }
-        return time
     }
 
     private static func renderDoubleRing(
@@ -382,16 +368,7 @@ enum UsageBadgeRenderer {
         appearance: NSAppearance,
         forcedColor: NSColor?
     ) -> NSImage {
-        let imageSize = doubleRingImageSize
-        let image = NSImage(size: imageSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-
-        appearance.performAsCurrentDrawingAppearance {
-            let rect = NSRect(origin: .zero, size: imageSize)
-            NSColor.clear.setFill()
-            rect.fill()
-
+        makeImage(size: doubleRingImageSize, appearance: appearance) {
             let divider = NSBezierPath()
             divider.appendArc(withCenter: NSPoint(x: 43, y: 12), radius: 1.0, startAngle: 0, endAngle: 360)
             NSColor.labelColor.withAlphaComponent(0.22).setFill()
@@ -400,9 +377,6 @@ enum UsageBadgeRenderer {
             drawLabeledRing(value: left, labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 29, y: 12), forcedColor: forcedColor)
             drawLabeledRing(value: right, labelRect: NSRect(x: 50, y: 4.0, width: 11, height: 16), ringCenter: NSPoint(x: 75, y: 12), forcedColor: forcedColor)
         }
-
-        image.isTemplate = false
-        return image
     }
 
     private static func renderLargeReadout(
@@ -411,16 +385,7 @@ enum UsageBadgeRenderer {
         appearance: NSAppearance,
         forcedColor: NSColor?
     ) -> NSImage {
-        let imageSize = largeReadoutImageSize
-        let image = NSImage(size: imageSize)
-        image.lockFocus()
-        defer { image.unlockFocus() }
-
-        appearance.performAsCurrentDrawingAppearance {
-            let rect = NSRect(origin: .zero, size: imageSize)
-            NSColor.clear.setFill()
-            rect.fill()
-
+        makeImage(size: largeReadoutImageSize, appearance: appearance) {
             let divider = NSBezierPath()
             divider.appendArc(withCenter: NSPoint(x: 43, y: 12), radius: 1.0, startAngle: 0, endAngle: 360)
             NSColor.labelColor.withAlphaComponent(0.28).setFill()
@@ -429,9 +394,6 @@ enum UsageBadgeRenderer {
             drawReadoutGroup(value: left, labelRect: NSRect(x: 1, y: 4.0, width: 11, height: 16), numberRect: NSRect(x: 15, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 1, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
             drawReadoutGroup(value: right, labelRect: NSRect(x: 49, y: 4.0, width: 11, height: 16), numberRect: NSRect(x: 61, y: 3.4, width: 25, height: 17), lineRect: NSRect(x: 48, y: 2.4, width: 36, height: 1.5), forcedColor: forcedColor)
         }
-
-        image.isTemplate = false
-        return image
     }
 
     private static func drawLabeledRing(
@@ -447,6 +409,16 @@ enum UsageBadgeRenderer {
     private static func drawRing(value: BadgeValue, center: NSPoint, forcedColor: NSColor?) {
         let radius: CGFloat = 9.7
         let lineWidth: CGFloat = 2.25
+        let isAlert = forcedColor == nil && isLowQuota(value.percent)
+
+        if isAlert {
+            let innerRadius = radius - lineWidth / 2 - 0.4
+            let disc = NSBezierPath()
+            disc.appendArc(withCenter: center, radius: innerRadius, startAngle: 0, endAngle: 360)
+            lowQuotaPillColor.setFill()
+            disc.fill()
+        }
+
         let track = NSBezierPath()
         track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
         track.lineWidth = lineWidth
@@ -470,7 +442,15 @@ enum UsageBadgeRenderer {
             ring.stroke()
         }
 
-        drawText(value.centerText, center: center, yOffset: -5.5, fontSize: value.centerText.count >= 3 ? 7.4 : 9.0, weight: .bold, alpha: 0.98)
+        drawText(
+            value.centerText,
+            center: center,
+            yOffset: -5.5,
+            fontSize: value.centerText.count >= 3 ? 7.4 : 9.0,
+            weight: .bold,
+            alpha: isAlert ? 1.0 : 0.98,
+            color: isAlert ? .white : forcedColor
+        )
     }
 
     private static func drawReadoutGroup(
@@ -482,12 +462,21 @@ enum UsageBadgeRenderer {
         numberFontSize: CGFloat? = nil
     ) {
         let percent = value.percent.map { max(0, min(100, $0)) }
+        let isAlert = forcedColor == nil && isLowQuota(percent)
         let accent = forcedColor ?? percent.map(color(for:)) ?? NSColor.labelColor.withAlphaComponent(0.26)
-        let emphasisAlpha: CGFloat = (percent ?? 100) < 20 ? 1.0 : 0.96
 
         drawStackedLabel(value.label, in: labelRect, alpha: 0.62)
         let fontSize = numberFontSize ?? (value.centerText.count >= 3 ? 11.6 : 13.2)
-        drawString(value.centerText, in: numberRect, fontSize: fontSize, weight: .bold, alpha: emphasisAlpha, alignment: .left)
+
+        if isAlert {
+            let pillRect = NSRect(x: numberRect.minX - 2, y: numberRect.minY + 1.4, width: numberRect.width + 2, height: numberRect.height - 2.2)
+            let pill = NSBezierPath(roundedRect: pillRect, xRadius: 3.4, yRadius: 3.4)
+            lowQuotaPillColor.setFill()
+            pill.fill()
+            drawString(value.centerText, in: pillRect, fontSize: fontSize - 0.8, weight: .bold, alpha: 1.0, alignment: .center, color: .white)
+        } else {
+            drawString(value.centerText, in: numberRect, fontSize: fontSize, weight: .bold, alpha: 0.96, alignment: .left, color: forcedColor)
+        }
 
         let track = NSBezierPath(roundedRect: lineRect, xRadius: 0.7, yRadius: 0.7)
         NSColor.labelColor.withAlphaComponent(0.14).setFill()
@@ -497,7 +486,7 @@ enum UsageBadgeRenderer {
             let fillWidth = max(1.2, lineRect.width * CGFloat(percent) / 100)
             let fillRect = NSRect(x: lineRect.minX, y: lineRect.minY, width: fillWidth, height: lineRect.height)
             let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: 0.7, yRadius: 0.7)
-            accent.withAlphaComponent(percent < 20 ? 0.95 : 0.72).setFill()
+            accent.withAlphaComponent(isAlert ? 0.95 : 0.72).setFill()
             fillPath.fill()
         }
     }
@@ -508,12 +497,13 @@ enum UsageBadgeRenderer {
         yOffset: CGFloat,
         fontSize: CGFloat,
         weight: NSFont.Weight,
-        alpha: CGFloat
+        alpha: CGFloat,
+        color: NSColor? = nil
     ) {
         let font = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.labelColor.withAlphaComponent(alpha),
+            .foregroundColor: (color ?? NSColor.labelColor).withAlphaComponent(alpha),
             .paragraphStyle: centeredParagraphStyle,
         ]
         let height = fontSize + 2
@@ -530,6 +520,10 @@ enum UsageBadgeRenderer {
         let normalized = text.uppercased()
         if normalized.count == 2 {
             lines = normalized.map(String.init)
+        } else if let unitIndex = normalized.firstIndex(where: { !$0.isNumber }),
+                  unitIndex != normalized.startIndex,
+                  normalized[unitIndex...].count == 1 {
+            lines = [String(normalized[..<unitIndex]), String(normalized[unitIndex...])]
         } else {
             lines = [normalized]
         }
@@ -578,15 +572,80 @@ enum UsageBadgeRenderer {
         return style
     }
 
+    private static func isLowQuota(_ percent: Int?) -> Bool {
+        guard let percent else { return false }
+        return percent < AppConfig.lowQuotaRedThresholdPercent
+    }
+
     private static func color(for percent: Int) -> NSColor {
         switch percent {
         case 50...100:
             return .systemGreen
-        case 20..<50:
+        case AppConfig.lowQuotaRedThresholdPercent..<50:
             return .systemOrange
         default:
             return .systemRed
         }
+    }
+}
+
+private final class ResetFormatter: @unchecked Sendable {
+    static let shared = ResetFormatter()
+
+    private let lock = NSLock()
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+    private let zhWeekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+    private let enWeekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+    private let zhDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日"
+        return formatter
+    }()
+    private let enDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
+    func text(for date: Date?, includeWeekday: Bool) -> String {
+        guard let date else {
+            return "--"
+        }
+        lock.lock()
+        defer { lock.unlock() }
+
+        timeFormatter.locale = Locale.current
+        let time = timeFormatter.string(from: date)
+        let usesChinese = Locale.current.language.languageCode?.identifier == "zh"
+
+        if includeWeekday {
+            if let sixDaysOut = Calendar.current.date(byAdding: .day, value: 6, to: Date()), date > sixDaysOut {
+                return (usesChinese ? zhDateFormatter : enDateFormatter).string(from: date)
+            }
+            let weekday = (usesChinese ? zhWeekdayFormatter : enWeekdayFormatter).string(from: date)
+            return "\(weekday)\(time)"
+        }
+
+        if Calendar.current.isDateInTomorrow(date) {
+            return usesChinese ? "明天\(time)" : "Tomorrow \(time)"
+        }
+        return time
     }
 }
 

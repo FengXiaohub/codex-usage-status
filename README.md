@@ -2,11 +2,23 @@
 
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
-Small, privacy-first macOS menu-bar app for showing **OpenAI Codex** and **Google Antigravity** (Gemini Models & Claude/GPT Models) usage quotas at a glance.
+Small, privacy-first macOS menu-bar app for showing **OpenAI Codex** and **Google Antigravity** (Gemini Models & Claude/GPT Models) live usage quotas, reset times, and local token consumption at a glance.
 
 ![Codex & Antigravity 3-column menu-bar status](docs/assets/menu-bar-3col.png)
 
 ---
+
+## v0.5.0 update: Token usage statistics, low-quota red alert & column visibility
+
+- **Token usage in the dropdown menu**: a new `Token usage · Today / 7 days` section shows today's and the last 7 days' token consumption for `[C] Codex`, `[G] Gemini` and `[A] Claude & GPT`, plus a grand total. Each row has a submenu with an input / cached (with cache hit %) / output (reasoning) breakdown, call counts, and a today-first per-model list. Clicking any quota or token row copies it to the clipboard (clicking the Token header copies the full summary).
+- **Red capsule badge & optional notification below 15%**: any remaining quota readout strictly below `15%` in the menu-bar badge is rendered as a high-contrast crimson capsule with crisp white bold text, plus an optional macOS notification (`Low-Quota Notifications`, at most once per reset cycle).
+- **Hide individual quota columns**: the new `Visible Quotas` submenu lets you independently hide `[C] Codex`, `[G] Gemini` or `[A] Claude & GPT` from the menu bar and quota list (persisted across restarts, keeping at least one visible; Token usage stats remain available).
+- **One-click Launch at Login & power-friendly background**: toggle macOS auto-start directly from the menu (`SMAppService.mainApp`); background quota timers pause automatically while the display sleeps, use coalesced timer tolerance, and perform zero background disk scans (token logs are incrementally read only when opening the menu or refreshing manually).
+- **Local, read-only and incremental**: counts come from local Codex session logs (`~/.codex/sessions/**/rollout-*.jsonl`, `token_count` events) and Antigravity conversation transcripts (`~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`). Only token numbers, model names and timestamps are decoded; conversation text is never stored or uploaded. Files are read incrementally, so refreshes stay cheap. Compressed Codex history (`.jsonl.zst`) is skipped.
+- **Totals include cached input**: Codex `input_tokens` already include cached tokens and Antigravity reports cache reads separately; both are normalized to `input (uncached) + cached + output`.
+- **Correct Codex window label**: Codex can now return a single 30-day window. The menu bar, dropdown, tooltips and CLI label the window from its real length (`5H` / `7D` / `30D`) instead of always showing `7D` (the CLI previously showed it as `5h`). Resets more than 6 days away show a date instead of a weekday.
+- **Stability**: a refresh watchdog (90 s) prevents a stuck query from silencing refreshes; the Codex reader no longer blocks waiting for stderr EOF; a malformed response from one Antigravity daemon falls through to the next; the client version reported to Codex now follows the app version.
+- **Debug helper**: `CodexUsageStatus.app/Contents/MacOS/CodexUsageStatus --tokens` prints the token summary in Terminal.
 
 ## v0.4.4 update: Direct local Antigravity daemon IPC & zero-CPU-loop stability
 
@@ -98,11 +110,33 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
 
 ---
 
-## Install from release
+## Quick install (via AI Agent or one-line Terminal command)
+
+No Xcode or source build needed. Paste this prompt into **Codex, Antigravity, Claude Code**, or any coding agent:
+
+```text
+Install and launch the latest release of FengXiaohub/codex-usage-status into /Applications on my Mac: https://github.com/FengXiaohub/codex-usage-status
+```
+
+Or run this one-liner in Terminal (or let your Agent execute it) — it auto-detects Apple Silicon (`arm64`) vs Intel (`x86_64`), downloads the latest GitHub Release ZIP, installs to `/Applications`, clears Gatekeeper quarantine, and starts the app:
+
+```sh
+ARCH="$(uname -m)"; [[ "$ARCH" == "x86_64" && "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" == "1" ]] && ARCH="arm64"
+URL="$(curl -fsSL https://api.github.com/repos/FengXiaohub/codex-usage-status/releases/latest | grep -Eo "https://[^\"]+macos-${ARCH}\.zip" | head -n 1)"
+TMP_DIR="$(mktemp -d)" && trap 'rm -rf "$TMP_DIR"' EXIT
+curl -fL "$URL" -o "$TMP_DIR/app.zip" && ditto -x -k "$TMP_DIR/app.zip" "$TMP_DIR"
+pkill -x CodexUsageStatus 2>/dev/null || true
+rm -rf /Applications/CodexUsageStatus.app && ditto "$TMP_DIR/CodexUsageStatus.app" /Applications/CodexUsageStatus.app
+xattr -cr /Applications/CodexUsageStatus.app && open -n /Applications/CodexUsageStatus.app
+```
+
+---
+
+## Manual install from release
 
 1. Download the latest release ZIP for your Mac from [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest):
-   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.4.4-macos-arm64.zip`
-   - **Intel Mac**: `CodexUsageStatus-0.4.4-macos-x86_64.zip`
+   - **Apple Silicon (M1 / M2 / M3 / M4)**: `CodexUsageStatus-0.5.0-macos-arm64.zip`
+   - **Intel Mac**: `CodexUsageStatus-0.5.0-macos-x86_64.zip`
 2. Unzip it.
 3. Move `CodexUsageStatus.app` to `/Applications`.
 4. Open `CodexUsageStatus.app`.
@@ -113,16 +147,17 @@ See [PRIVACY.md](PRIVACY.md) for the user-facing privacy summary and [SECURITY.m
   ```sh
   xattr -cr /Applications/CodexUsageStatus.app
   ```
-- **Menu-bar-only**: The app does not appear in the Dock. Optional: add it to **macOS System Settings > General > Login Items** to launch automatically at login.
-- **Automatic sync with client updates**: The app reads live quotas directly from your installed `ChatGPT.app` / `Codex.app` and `agy` CLI without hardcoding model lists, and automatically refreshes whenever those clients update or launch.
+- **Menu-bar-only & Launch at Login**: The app does not appear in the Dock. Click the menu-bar icon and toggle **Launch at Login** to start automatically when you sign in.
+- **Automatic sync with client updates**: The app reads live quotas directly from your installed `ChatGPT.app` / `Codex.app` and running `Antigravity.app` local daemon without hardcoding model lists, and automatically refreshes whenever those clients update or launch.
 
 ---
 
 ## Known limitations
 
-- Codex desktop must be installed at `/Applications/ChatGPT.app` or `/Applications/Codex.app` (unless `CODEX_BIN` is set), and Antigravity CLI must be installed at `~/.local/bin/agy`, `/usr/local/bin/agy`, or `/opt/homebrew/bin/agy` (unless `AGY_BIN` is set).
-- You must already be signed in to the respective CLI/app.
-- Live usage depends on Codex's local app-server method `account/rateLimits/read` and Antigravity's `agy -p "/usage" --output-format json`.
+- Codex desktop must be installed at `/Applications/ChatGPT.app` or `/Applications/Codex.app` (unless `CODEX_BIN` is set), or Antigravity desktop must be installed and running at `/Applications/Antigravity.app`.
+- You must already be signed in to the respective desktop app.
+- Live usage depends on Codex's local app-server method `account/rateLimits/read` and Antigravity's local `127.0.0.1` `RetrieveUserQuotaSummary` endpoint.
+- Compressed Codex session archives (`.jsonl.zst`) are skipped for token statistics; active uncompressed sessions and Antigravity conversation transcripts within the 7-day window are counted.
 - The app shows usage only. It cannot buy credits, switch accounts, retry login, or change limits.
 
 ---
@@ -205,10 +240,12 @@ npm run package:macos:all
 ## Repository layout
 
 - `macos/CodexUsageStatus/`: native AppKit menu-bar app.
-  - `App/`: status item lifecycle, menu actions, refresh scheduling, and configuration.
-  - `Codex/`: concurrent local Codex `app-server` JSON-RPC client and Antigravity `agy` CLI runner.
-  - `Domain/`: rate-limit response models, Antigravity quota models, and 3-column usage normalization.
-  - `UI/`: 3-column horizontal badge styles and AppKit drawing code.
+  - `App/`: status item lifecycle, menu actions, low-quota notification tracker, refresh scheduling, and configuration.
+  - `Codex/`: concurrent local Codex `app-server` JSON-RPC client and Antigravity `127.0.0.1` local daemon reader.
+  - `Domain/`: rate-limit response models, Antigravity quota models, 3-column usage normalization, and token report models.
+  - `Tokens/`: 256 KB zero-copy incremental token log scanner.
+  - `UI/`: 3-column horizontal badge styles, `< 15%` red capsule badge, column visibility, and AppKit drawing code.
+  - `Tests/`: Swift `XCTest` unit test suite.
 - `src/`: Node CLI probe for diagnostics and tests.
 - `test/`: Node tests for Codex & Antigravity response normalization and sensitive-output redaction.
 - `scripts/`: build, run, install, and release packaging scripts.

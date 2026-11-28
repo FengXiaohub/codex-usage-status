@@ -4,10 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/CodexUsageStatus.app"
-VERSION="${VERSION:-0.4.4}"
+PACKAGE_VERSION="$(/usr/bin/sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT_DIR/package.json" | /usr/bin/head -n 1)"
+VERSION="${VERSION:-${PACKAGE_VERSION:-0.5.0}}"
 ARCHES=("arm64" "x86_64")
 
-rm -f "$DIST_DIR"/CodexUsageStatus-"$VERSION"-macos-*.zip "$DIST_DIR/SHA256SUMS.txt"
+rm -f "$DIST_DIR"/CodexUsageStatus-*-macos-*.zip "$DIST_DIR/SHA256SUMS.txt"
 
 for arch in "${ARCHES[@]}"; do
   BUILD_ARCH="$arch" "$ROOT_DIR/scripts/build-macos-app.sh" >/dev/null

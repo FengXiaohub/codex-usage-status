@@ -1,6 +1,6 @@
 {
   "name": "codex-usage-status",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Read-only Codex & Antigravity usage status via official local CLI interfaces.",
   "type": "module",
   "private": true,
@@ -8,8 +8,8 @@
     "codex-usage-status": "./src/cli.js"
   },
   "scripts": {
-    "test": "node --test",
-    "check": "node --test",
+    "test": "node --test && swift test --package-path macos/CodexUsageStatus",
+    "check": "node --test && swift test --package-path macos/CodexUsageStatus",
     "usage": "node ./src/cli.js",
     "usage:json": "node ./src/cli.js --json",
     "build:macos": "bash ./scripts/build-macos-app.sh",

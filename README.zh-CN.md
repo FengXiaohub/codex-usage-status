@@ -2,11 +2,23 @@
 
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
-轻量、零凭据接触的原生 macOS 顶部菜单栏应用，让你一眼看清 **OpenAI Codex** 与 **Google Antigravity**（Gemini 模型组 & Claude/GPT 模型组）的实时剩余配额与重置时间。
+轻量、零凭据接触的原生 macOS 顶部菜单栏应用，让你一眼看清 **OpenAI Codex** 与 **Google Antigravity**（Gemini 模型组 & Claude/GPT 模型组）的实时剩余配额、重置时间与本机 Token 消耗统计。
 
 ![Codex & Antigravity 顶部菜单栏横向三列效果图](docs/assets/menu-bar-3col.png)
 
 ---
+
+## v0.5.0 更新：Token 用量统计、低于 15% 标红告警与额度列单独隐藏
+
+- **下拉菜单新增 Token 用量（支持缓存命中率与点击复制）**：新增「Token 用量 · 今日 / 近 7 天」区域，分别显示 `[C] Codex`、`[G] Gemini`、`[A] Claude & GPT` 今日与近 7 天的 token 消耗及合计；每行子菜单含输入 / 缓存（自动计算命中率百分比） / 输出（含推理）明细、调用次数和今日优先的按模型排行。点击任意额度或统计行即可复制该行文本（点击 Token 标题行可复制完整汇总）。
+- **低于 15% 红底白字胶囊高亮与桌面通知**：顶部状态栏中任意一项剩余额度低于 `15%` 时自动渲染为高对比度的红底白字圆角胶囊，并支持可选的 macOS 原生系统通知提醒（每个重置周期最多提醒一次，可在菜单「低额度通知提醒」随时开关）。
+- **支持单独隐藏额度列**：菜单新增「显示额度」子菜单，可单独取消勾选隐藏 `[C] Codex`、`[G] Gemini` 或 `[A] Claude & GPT` 额度（设置自动保存，至少保留一项显示；下方 Token 用量统计不受影响）。
+- **菜单一键「开机自启」与息屏零唤醒省电**：基于 macOS 原生 `SMAppService` 在菜单内直接开关开机自启；显示器息屏期间自动暂停后台轮询并启用内核定时器合并，后台实现零日志磁盘扫描（仅在点开菜单或手动刷新时按偏移增量读取）；全部界面统一跟随系统语言切换中英文。
+- **本机只读、增量读取**：数据来自本机 Codex 会话日志（`~/.codex/sessions/**/rollout-*.jsonl` 中的 `token_count` 事件）与 Antigravity 对话记录（`~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`）。只解析 token 数字、模型名和时间，不保存、不上传对话内容；按文件偏移增量读取，刷新开销很小。已压缩的 Codex 历史（`.jsonl.zst`）不计入。
+- **总量含缓存命中**：Codex 的 `input_tokens` 本身包含缓存，Antigravity 单独报告缓存读取；两者统一为「未缓存输入 + 缓存 + 输出」。
+- **修正 Codex 窗口标签**：Codex 目前可能只返回一个 30 天窗口。菜单栏、下拉菜单、提示和 CLI 改为按实际窗口长度显示 `5H` / `7D` / `30D`（之前固定显示 `7D`，CLI 误显示为 `5h`）；超过 6 天后才重置的时间改为显示日期而非星期。
+- **稳定性**：新增 90 秒刷新看门狗，单次查询卡住不会让应用停止刷新；Codex 读取不再阻塞等待 stderr 结束；某个 Antigravity 服务返回异常数据时自动尝试下一个；上报给 Codex 的客户端版本跟随应用版本。
+- **调试命令**：在终端运行 `CodexUsageStatus.app/Contents/MacOS/CodexUsageStatus --tokens` 可打印 token 汇总。
 
 ## v0.4.4 更新：直连本地 Antigravity 服务、彻底消除 `sandboxd` 死锁与 CPU 死循环
 
@@ -96,11 +108,33 @@ macOS 应用支持最新版 ChatGPT 桌面端应用包路径（Codex 内嵌于 `
 
 ---
 
-## 从 Release 安装（免编译直接使用）
+## 一键安装（通过 AI Agent 或终端免编译安装）
+
+无需安装 Xcode 或克隆源码，你可以直接把下面这句话发给你的 **Codex / Antigravity / Claude Code** 等任意 AI Agent 让它自动安装：
+
+```text
+请帮我下载并安装最新版 FengXiaohub/codex-usage-status 到 /Applications 并启动：https://github.com/FengXiaohub/codex-usage-status
+```
+
+或者让 Agent（或你自己打开 macOS 终端）直接运行以下一键脚本——会自动识别 Apple Silicon (`arm64`) / Intel (`x86_64`) 芯片、拉取最新 Release 包、安装至 `/Applications`、解除系统隔离属性并启动：
+
+```sh
+ARCH="$(uname -m)"; [[ "$ARCH" == "x86_64" && "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" == "1" ]] && ARCH="arm64"
+URL="$(curl -fsSL https://api.github.com/repos/FengXiaohub/codex-usage-status/releases/latest | grep -Eo "https://[^\"]+macos-${ARCH}\.zip" | head -n 1)"
+TMP_DIR="$(mktemp -d)" && trap 'rm -rf "$TMP_DIR"' EXIT
+curl -fL "$URL" -o "$TMP_DIR/app.zip" && ditto -x -k "$TMP_DIR/app.zip" "$TMP_DIR"
+pkill -x CodexUsageStatus 2>/dev/null || true
+rm -rf /Applications/CodexUsageStatus.app && ditto "$TMP_DIR/CodexUsageStatus.app" /Applications/CodexUsageStatus.app
+xattr -cr /Applications/CodexUsageStatus.app && open -n /Applications/CodexUsageStatus.app
+```
+
+---
+
+## 从 Release 手动下载安装
 
 1. 前往 [GitHub Releases](https://github.com/FengXiaohub/codex-usage-status/releases/latest) 下载对应你 Mac 芯片架构的最新压缩包：
-   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.4.4-macos-arm64.zip`
-   - **Intel 芯片**：`CodexUsageStatus-0.4.4-macos-x86_64.zip`
+   - **Apple Silicon（M1 / M2 / M3 / M4 系列芯片）**：`CodexUsageStatus-0.5.0-macos-arm64.zip`
+   - **Intel 芯片**：`CodexUsageStatus-0.5.0-macos-x86_64.zip`
 2. 双击解压 ZIP 文件。
 3. 将 `CodexUsageStatus.app` 拖入 `/Applications`（应用程序）目录。
 4. 双击打开 `CodexUsageStatus.app`。
@@ -111,8 +145,8 @@ macOS 应用支持最新版 ChatGPT 桌面端应用包路径（Codex 内嵌于 `
   ```sh
   xattr -cr /Applications/CodexUsageStatus.app
   ```
-- **纯菜单栏运行**：应用不会占用底部 Dock 栏。如需开机自启，可将其添加到 **macOS 系统设置 > 通用 > 登录项**。
-- **随客户端更新实时同步**：插件内部不写死任何模型列表，而是直接调用你本机已安装的 `ChatGPT.app` / `Codex.app` 与 `agy` CLI 实时获取配额；当 Antigravity 或 ChatGPT/Codex 客户端升级或重新打开时，插件也会自动感知并即时刷新。
+- **纯菜单栏运行与一键开机自启**：应用不会占用底部 Dock 栏。点击顶部菜单栏图标勾选 **「开机自启」** 即可一键开启登录自动启动。
+- **随客户端更新实时同步**：应用内部不写死模型列表，直接读取本机已安装的 `ChatGPT.app` / `Codex.app` 与运行中的 `Antigravity.app` 本地服务实时获取配额；客户端升级或重新打开时会自动感知并即时刷新。
 
 ---
 
@@ -185,10 +219,12 @@ npm run package:macos:all
 ## 仓库目录结构
 
 - `macos/CodexUsageStatus/`：原生 Swift / AppKit 菜单栏应用。
-  - `App/`：菜单栏状态项生命周期、下拉菜单、定时刷新调度与路径配置。
-  - `Codex/`：本地 Codex `app-server` JSON-RPC 客户端与 Antigravity `agy` CLI 并发拉取器。
-  - `Domain/`：Codex 与 Antigravity 配额响应解码模型及三列数据归一化。
-  - `UI/`：横向三列（`C` / `G` / `A`）徽章样式与 AppKit 绘制实现。
+  - `App/`：菜单栏状态项生命周期、下拉菜单、低额度通知去重管理、定时刷新调度与路径配置。
+  - `Codex/`：本地 Codex `app-server` JSON-RPC 客户端与 Antigravity `127.0.0.1` 本地服务并发拉取器。
+  - `Domain/`：配额响应解码模型、三列数据归一化与 Token 统计报表模型。
+  - `Tokens/`：本机会话日志 256 KB 零拷贝增量 Token 扫描器。
+  - `UI/`：横向三列（`C` / `G` / `A`）徽章样式、低于 15% 胶囊高亮、单列显隐与 AppKit 绘制实现。
+  - `Tests/`：Swift `XCTest` 自动化单元测试。
 - `src/`：用于诊断与测试的 Node.js CLI 探针。
 - `test/`：配额归一化与敏感信息脱敏的单元测试。
 - `scripts/`：构建、运行、安装与发布打包脚本。

@@ -16,15 +16,19 @@ export function normalizeUsage(rateLimitResponse, now = new Date()) {
     .map((window) => normalizeWindow(window, now));
 
   const fiveHour = windows.find((window) => approximately(window.windowDurationMins, FIVE_HOURS_MINS));
-  const weekly = windows.find((window) => approximately(window.windowDurationMins, WEEK_MINS));
+  // Codex may expose a weekly or a 30-day window; never relabel a long window as "5h".
+  const longWindows = windows.filter((window) => window !== fiveHour);
+  const weekly =
+    longWindows.find((window) => approximately(window.windowDurationMins, WEEK_MINS)) ??
+    longWindows.sort((a, b) => (b.windowDurationMins ?? 0) - (a.windowDurationMins ?? 0))[0];
 
   return {
     limitId: snapshot.limitId ?? "codex",
     label: "C",
     title: "Codex",
     planType: snapshot.planType ?? null,
-    fiveHour: fiveHour ?? windows[0] ?? null,
-    weekly: weekly ?? windows[1] ?? null,
+    fiveHour: fiveHour ?? null,
+    weekly: weekly ?? null,
     windows,
   };
 }
@@ -96,10 +100,32 @@ export function formatMenuTitle(usage) {
     parts.push(`5h ${usage.fiveHour.remainingPercent}%`);
   }
   if (usage.weekly) {
-    parts.push(`7d ${usage.weekly.remainingPercent}%`);
+    parts.push(`${windowShortLabel(usage.weekly).toLowerCase()} ${usage.weekly.remainingPercent}%`);
   }
   const prefix = usage.title ?? "Codex";
   return parts.length > 0 ? `${prefix} ${parts.join(" ")}` : `${prefix} usage`;
+}
+
+export function windowShortLabel(window) {
+  const mins = window?.windowDurationMins;
+  if (typeof mins !== "number" || mins <= 0) {
+    return "7D";
+  }
+  if (approximately(mins, FIVE_HOURS_MINS)) {
+    return "5H";
+  }
+  if (mins >= 1440) {
+    return `${Math.round(mins / 1440)}D`;
+  }
+  return `${Math.max(1, Math.round(mins / 60))}H`;
+}
+
+function windowLongLabel(window) {
+  const short = windowShortLabel(window);
+  if (short === "5H") return "5-hour";
+  if (short === "7D") return "Weekly";
+  const amount = short.slice(0, -1);
+  return short.endsWith("D") ? `${amount}-day` : `${amount}-hour`;
 }
 
 export function formatCombinedTextStatus(combined) {
@@ -123,8 +149,9 @@ export function formatTextStatus(usage) {
     lines.push(`5-hour reset: ${formatReset(usage.fiveHour.resetsAt)}`);
   }
   if (usage.weekly) {
-    lines.push(`Weekly remaining: ${usage.weekly.remainingPercent}%`);
-    lines.push(`Weekly reset: ${formatReset(usage.weekly.resetsAt)}`);
+    const label = windowLongLabel(usage.weekly);
+    lines.push(`${label} remaining: ${usage.weekly.remainingPercent}%`);
+    lines.push(`${label} reset: ${formatReset(usage.weekly.resetsAt)}`);
   }
   return lines.join("\n");
 }
